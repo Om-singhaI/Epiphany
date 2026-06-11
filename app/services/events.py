@@ -44,6 +44,9 @@ class AgentLogEvent:
     level: str
     message: str
     mode: str = "live"
+    # Which user this event belongs to. The WebSocket only forwards events to
+    # the matching user, so one account never sees another's agent activity.
+    user_id: str | None = None
 
     def to_payload(self) -> dict:
         """Serialise to a JSON-friendly dict with a server timestamp."""

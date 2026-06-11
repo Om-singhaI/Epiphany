@@ -731,7 +731,22 @@
         return Math.floor(s / 86400) + 'd ago';
     }
     function icons() { if (window.lucide) lucide.createIcons(); }
-    async function getJSON(url) { const r = await fetch(url); if (!r.ok) throw new Error(url + ' ' + r.status); return r.json(); }
+
+    // ── per-user identity (isolates each account's data) ───────────────
+    function demoUid() {
+        let u = null;
+        try { u = localStorage.getItem('epiphany.uid'); } catch (_) {}
+        if (!u) { u = 'u_' + Math.random().toString(36).slice(2) + Date.now().toString(36); try { localStorage.setItem('epiphany.uid', u); } catch (_) {} }
+        return u;
+    }
+    function uid() { return window.__UID__ || demoUid(); }
+    function uidHeaders(extra) { return Object.assign({ 'X-User-Id': uid() }, extra || {}); }
+
+    async function getJSON(url) {
+        const r = await fetch(url, { headers: uidHeaders() });
+        if (!r.ok) throw new Error(url + ' ' + r.status);
+        return r.json();
+    }
 
     /* ════════════════════════════════════════════════════════════════════
        TASK A — Authentication gate logic
@@ -802,7 +817,7 @@
             const email = (u.primaryEmailAddress && u.primaryEmailAddress.emailAddress) ||
                 (u.emailAddresses && u.emailAddresses[0] && u.emailAddresses[0].emailAddress) || '';
             const name = [u.firstName, u.lastName].filter(Boolean).join(' ') || (email ? email.split('@')[0] : 'User');
-            return { name: name, email: email };
+            return { name: name, email: email, uid: u.id || demoUid() };
         }
         async function clerkSubmit() {
             submitBtn.disabled = true;
@@ -841,7 +856,7 @@
         }
         function demoSubmit() {
             const problem = validate(); if (problem) { showError(problem); return; }
-            const user = { name: (nameEl.value.trim() || emailEl.value.trim().split('@')[0]), email: emailEl.value.trim() };
+            const user = { name: (nameEl.value.trim() || emailEl.value.trim().split('@')[0]), email: emailEl.value.trim(), uid: demoUid() };
             try { localStorage.setItem(SESSION_KEY, JSON.stringify(user)); } catch (_) {}
             mountWorkspace(user);
         }
@@ -917,6 +932,8 @@
         if (window.AppState.authenticated) return;
         window.AppState.authenticated = true;
         State.user = user;
+        // Bind this browser/account to an isolated server-side workspace.
+        window.__UID__ = (user && user.uid) || demoUid();
 
         const authEl = $('auth-container'), ws = $('workspace'), landingEl = $('landing');
         authEl.classList.add('fade-out');
@@ -1054,7 +1071,7 @@
                 const provider = btn.dataset.provider;
                 btn.disabled = true; const orig = btn.textContent; btn.textContent = 'Saving…';
                 try {
-                    const res = await fetch(API.connect, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(buildPayload(provider)) });
+                    const res = await fetch(API.connect, { method: 'POST', headers: uidHeaders({ 'Content-Type': 'application/json' }), body: JSON.stringify(buildPayload(provider)) });
                     if (!res.ok) throw new Error('save failed');
                     // Clear secret inputs after a successful save.
                     ['conn-gemini-key', 'conn-elastic-key', 'conn-fivetran-key', 'conn-fivetran-secret', 'conn-gitlab-token'].forEach((id) => { const el = $(id); if (el) el.value = ''; });
@@ -1380,7 +1397,7 @@
         const sel = $('ds-select');
         if (sel) sel.addEventListener('change', () => {
             const path = sel.value; if (!path) return;
-            switchDataset(() => fetch(API.selectDataset, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ path }) }));
+            switchDataset(() => fetch(API.selectDataset, { method: 'POST', headers: uidHeaders({ 'Content-Type': 'application/json' }), body: JSON.stringify({ path }) }));
         });
         const up = $('ds-upload');
         if (up) up.addEventListener('change', () => {
@@ -1389,7 +1406,7 @@
             const label = $('ds-upload-label'); const orig = label ? label.textContent : '';
             if (label) label.textContent = 'Uploading…';
             switchDataset(
-                () => fetch(API.uploadDataset, { method: 'POST', body: fd }),
+                () => fetch(API.uploadDataset, { method: 'POST', headers: uidHeaders(), body: fd }),
                 () => { if (label) label.textContent = orig; up.value = ''; }
             );
         });
@@ -1419,7 +1436,7 @@
             window.AppState.missionActive = true;
             status.textContent = 'Dispatching mission to the agent…'; status.className = 'text-xs text-indigo-300';
             try {
-                const res = await fetch(API.run, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ user_goal: goal }) });
+                const res = await fetch(API.run, { method: 'POST', headers: uidHeaders({ 'Content-Type': 'application/json' }), body: JSON.stringify({ user_goal: goal }) });
                 const data = await res.json().catch(() => ({}));
                 if (!res.ok || data.status === 'unavailable') throw new Error(data.detail || 'Agent unavailable');
                 status.textContent = 'Mission accepted — watch the Active Agent Stream.'; status.className = 'text-xs text-emerald-400';
@@ -1434,7 +1451,7 @@
         const btn = $('force-sync');
         btn.addEventListener('click', async () => {
             btn.disabled = true;
-            try { await fetch(API.run, { method: 'POST' }); } catch (_) {}
+            try { await fetch(API.run, { method: 'POST', headers: uidHeaders() }); } catch (_) {}
             finally { setTimeout(() => { btn.disabled = false; }, 1500); }
         });
     }
@@ -1512,7 +1529,7 @@
 
         function connect() {
             const proto = location.protocol === 'https:' ? 'wss' : 'ws';
-            const ws = new WebSocket(proto + '://' + location.host + API.ws);
+            const ws = new WebSocket(proto + '://' + location.host + API.ws + '?uid=' + encodeURIComponent(uid()));
             ws.onopen = () => { if (!$('ws-standby') && !feed.children.length) standby(); setStatus('ONLINE', true); };
             ws.onmessage = (e) => { try { enqueue(JSON.parse(e.data)); } catch (_) {} };
             ws.onclose = () => { setStatus('RECONNECTING', false); setTimeout(connect, 2000); };

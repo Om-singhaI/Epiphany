@@ -21,7 +21,7 @@ from fastapi.staticfiles import StaticFiles
 
 from app.config import get_settings
 from app.routers import agent, dashboard, websocket
-from app.services.agent_orchestrator import AgentOrchestrator
+from app.services.session import SessionManager
 
 logging.basicConfig(level=logging.INFO)
 
@@ -38,26 +38,11 @@ async def lifespan(app: FastAPI):
     The orchestrator publishes structured events to the shared event bus, which
     the WebSocket router fans out to every connected dashboard client.
     """
-    settings = get_settings()
-    orchestrator = AgentOrchestrator(settings=settings)
-    app.state.orchestrator = orchestrator
-    await orchestrator.repository.init()
-    # Start the autonomous loop unless disabled (e.g. on a constrained host
-    # where cycles are triggered on demand via the dashboard instead).
-    task = (
-        asyncio.create_task(orchestrator.run_forever())
-        if settings.run_autonomous_loop
-        else None
-    )
-    try:
-        yield
-    finally:
-        if task is not None:
-            task.cancel()
-            try:
-                await task
-            except asyncio.CancelledError:
-                pass
+    # One isolated agent per user (data + results never cross accounts). The
+    # SessionManager lazily creates a per-user orchestrator on first request and
+    # runs cycles for that user on demand (upload / Force Sync / mission).
+    app.state.sessions = SessionManager()
+    yield
 
 
 def create_app() -> FastAPI:

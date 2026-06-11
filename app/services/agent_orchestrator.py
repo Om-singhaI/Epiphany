@@ -114,9 +114,11 @@ class AgentOrchestrator:
         self,
         settings: Settings | None = None,
         bus: EventBus | None = None,
+        user_id: str | None = None,
     ) -> None:
         self.settings = settings or get_settings()
         self.bus = bus or event_bus
+        self._uid = user_id
         self.fivetran = FivetranClient(self.settings)
         self.elastic = ElasticClient(self.settings)
         self.data = DataPort(self.settings, self.elastic)
@@ -162,7 +164,8 @@ class AgentOrchestrator:
     ) -> None:
         await self.bus.publish(
             AgentLogEvent(
-                stage=stage, source=source, level=level, message=message, mode=mode
+                stage=stage, source=source, level=level, message=message,
+                mode=mode, user_id=self._uid,
             )
         )
         await asyncio.sleep(0.4)

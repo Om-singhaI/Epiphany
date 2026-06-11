@@ -1,9 +1,10 @@
-"""Agent control router.
+"""Agent control router (per-user).
 
-Exposes HTTP endpoints to inspect provider wiring and trigger an on-demand
-agent cycle (e.g. the dashboard's "Force Sync" button). The autonomous loop also
-runs continuously in the background (see :func:`app.main.lifespan`); this router
-lets a human kick an extra cycle and observe live provider modes.
+Every endpoint is scoped to the requesting user via the ``X-User-Id`` header:
+each account gets its own isolated agent (its own dataset, results, and live
+stream) through the :class:`~app.services.session.SessionManager`. Provider
+credentials (Gemini / Elastic / Fivetran / GitLab) remain global — they belong
+to whoever deployed the app — while data and findings never cross accounts.
 """
 
 from __future__ import annotations
@@ -18,27 +19,62 @@ from fastapi.responses import JSONResponse
 from app.config import get_settings, reload_settings
 from app.services import connections
 from app.services.model_generator import model_filename, render_model_script
+from app.services.session import safe_uid
 
 router = APIRouter(prefix="/api/agent", tags=["agent"])
 
+_DATA_ROOT = Path("data")
+_DATA_EXTS = {".csv", ".parquet", ".pq"}
+
+
+# ── per-user helpers ─────────────────────────────────────────────────────
+def _uid(request: Request) -> str:
+    """The requesting user's id (Clerk id or per-browser id), from a header."""
+    return safe_uid(request.headers.get("X-User-Id"))
+
+
+async def _orch(request: Request):
+    """The per-user orchestrator (created on first use), or None if unavailable."""
+    sessions = getattr(request.app.state, "sessions", None)
+    if sessions is None:
+        return None
+    return await sessions.get(_uid(request))
+
 
 def _humanize(name: str | None) -> str:
-    """Turn a raw column name into a readable label.
-
-    e.g. ``Login_Frequency`` -> ``Login Frequency``,
-    ``avg_latency_ms`` -> ``Avg Latency Ms``, ``churn_30_days`` -> ``Churn 30 Days``.
-    """
+    """Turn a raw column name into a readable label."""
     if not name:
         return "Discovered Driver"
-    import re
-
     words = re.split(r"[\W_]+", str(name).strip())
     return " ".join(w.capitalize() for w in words if w) or "Discovered Driver"
 
 
+def _safe_name(name: str) -> str:
+    """Sanitise an uploaded filename to a basename with a safe extension."""
+    base = Path(name or "dataset.csv").name
+    stem = re.sub(r"[^A-Za-z0-9._-]+", "_", base).strip("._") or "dataset"
+    if not stem.lower().endswith(tuple(_DATA_EXTS)):
+        stem += ".csv"
+    return stem
+
+
+async def _autorun(orch, n: int = 3) -> None:
+    """Run a few rotating cycles for a user so their dashboard populates and the
+    agent feels autonomous — right after they provide data."""
+    for i in range(n):
+        try:
+            goal = await orch._rotating_goal(i)
+            result = await orch.run_cycle(user_goal=goal, allow_adk=False)
+            if result.get("status") == "idle":
+                break
+        except Exception:  # noqa: BLE001 - never crash the background task
+            break
+
+
+# ── Provider status / connections (GLOBAL — the deployer's creds) ────────
 @router.get("/status")
 async def agent_status() -> JSONResponse:
-    """Report which providers are live vs. running in simulation mode."""
+    """Report which providers are live vs. running in fallback mode."""
     s = get_settings()
     return JSONResponse(
         {
@@ -50,7 +86,6 @@ async def agent_status() -> JSONResponse:
             },
             "force_simulation": s.force_simulation,
             "auto_deploy": s.auto_deploy,
-            "data_source": s.elastic_index if s.elastic_enabled else s.data_csv_path,
         }
     )
 
@@ -63,14 +98,7 @@ async def get_connections() -> JSONResponse:
 
 @router.post("/connect")
 async def connect(request: Request) -> JSONResponse:
-    """Save user-supplied provider credentials and reconfigure the agent live.
-
-    Accepts a JSON body with any subset of the allowed connection fields (e.g.
-    ``gemini_api_key``, ``elastic_api_key``, ``elastic_cloud_id``,
-    ``fivetran_api_key``, ``gitlab_token``, ``gitlab_project_id``,
-    ``auto_deploy``, ...). An empty string clears (disconnects) a field. Secret
-    values are persisted server-side and never returned.
-    """
+    """Save global provider credentials and reconfigure all active sessions."""
     try:
         payload = await request.json()
     except Exception:
@@ -78,101 +106,79 @@ async def connect(request: Request) -> JSONResponse:
     if not isinstance(payload, dict):
         return JSONResponse({"error": "body must be an object"}, status_code=400)
 
-    # Persist the provided fields, then rebuild settings + provider clients.
     connections.save_overrides(payload)
     settings = reload_settings()
-
-    orchestrator = getattr(request.app.state, "orchestrator", None)
-    applied = None
-    if orchestrator is not None:
-        applied = await orchestrator.reconfigure(settings)
-
+    sessions = getattr(request.app.state, "sessions", None)
+    if sessions is not None:
+        await sessions.reconfigure_all()
     return JSONResponse(
-        {
-            "status": "connected",
-            "applied": applied,
-            "connections": connections.connection_status(settings),
-        }
+        {"status": "connected", "connections": connections.connection_status(settings)}
     )
 
 
-# ── Dataset management (bring-your-own-data) ─────────────────────────────
-_DATA_ROOT = Path("data")
-_UPLOAD_DIR = _DATA_ROOT / "uploads"
-_DATA_EXTS = {".csv", ".parquet", ".pq"}
-
-
-def _safe_name(name: str) -> str:
-    """Sanitise an uploaded filename to a basename with a safe extension."""
-    base = Path(name or "dataset.csv").name
-    stem = re.sub(r"[^A-Za-z0-9._-]+", "_", base).strip("._") or "dataset"
-    if not stem.lower().endswith(tuple(_DATA_EXTS)):
-        stem += ".csv"
-    return stem
-
-
-async def _dataset_summary(orchestrator) -> dict:
-    return await orchestrator.data.summary()
-
-
+# ── Dataset management (per-user) ────────────────────────────────────────
 @router.get("/dataset")
 async def dataset(request: Request) -> JSONResponse:
-    """Return a domain-agnostic summary of the dataset under analysis."""
-    orchestrator = getattr(request.app.state, "orchestrator", None)
-    if orchestrator is None:
+    """Return a summary of *this user's* dataset (or an empty state)."""
+    orch = await _orch(request)
+    if orch is None:
         return JSONResponse({"status": "unavailable"}, status_code=503)
     try:
-        return JSONResponse(await _dataset_summary(orchestrator))
+        return JSONResponse(await orch.data.summary())
     except Exception as exc:  # noqa: BLE001
         return JSONResponse({"error": str(exc)}, status_code=500)
 
 
 @router.get("/datasets")
-async def datasets() -> JSONResponse:
-    """List datasets available on the server (bundled samples + uploads)."""
+async def datasets(request: Request) -> JSONResponse:
+    """List only the datasets *this user* uploaded."""
+    sessions = getattr(request.app.state, "sessions", None)
+    if sessions is None:
+        return JSONResponse({"datasets": []})
+    up = sessions.uploads_dir(_uid(request))
     items = []
-    for root in (_DATA_ROOT, _UPLOAD_DIR):
-        if not root.exists():
-            continue
-        for p in sorted(root.glob("*")):
+    if up.exists():
+        for p in sorted(up.glob("*")):
             if p.suffix.lower() in _DATA_EXTS and p.is_file():
                 items.append({
                     "name": p.name,
                     "path": str(p).replace("\\", "/"),
                     "size_kb": round(p.stat().st_size / 1024, 1),
-                    "uploaded": (_UPLOAD_DIR in p.parents),
+                    "uploaded": True,
                 })
     return JSONResponse({"datasets": items})
 
 
 async def _switch_dataset(request: Request, path: str) -> JSONResponse:
-    """Point the agent at ``path`` (must live under ./data) and reconfigure."""
+    """Point *this user's* agent at ``path`` (must live under this user's dir)."""
+    sessions = getattr(request.app.state, "sessions", None)
+    if sessions is None:
+        return JSONResponse({"status": "unavailable"}, status_code=503)
+    uid = _uid(request)
     target = Path(path)
     try:
         resolved = target.resolve()
-        if not resolved.is_relative_to(_DATA_ROOT.resolve()):
-            return JSONResponse({"error": "path must be inside ./data"}, status_code=400)
+        allowed = sessions.user_root(uid).resolve()
+        if not resolved.is_relative_to(allowed):
+            return JSONResponse({"error": "path outside your workspace"}, status_code=400)
     except (ValueError, OSError):
         return JSONResponse({"error": "invalid path"}, status_code=400)
     if not resolved.exists():
         return JSONResponse({"error": "file not found"}, status_code=404)
 
-    connections.save_overrides({"data_csv_path": str(target), "prefer_local_data": True})
-    settings = reload_settings()
-    orchestrator = getattr(request.app.state, "orchestrator", None)
-    if orchestrator is not None:
-        await orchestrator.reconfigure(settings)
-        try:
-            summary = await _dataset_summary(orchestrator)
-        except Exception as exc:  # noqa: BLE001 - bad file, surface it
-            return JSONResponse({"error": f"could not read dataset: {exc}"}, status_code=400)
-        return JSONResponse({"status": "switched", "dataset": summary})
-    return JSONResponse({"status": "switched"})
+    orch = await sessions.set_dataset(uid, str(target), prefer_local=True)
+    try:
+        summary = await orch.data.summary()
+    except Exception as exc:  # noqa: BLE001
+        return JSONResponse({"error": f"could not read dataset: {exc}"}, status_code=400)
+    # Kick off a few autonomous cycles for this user, streamed live.
+    asyncio.create_task(_autorun(orch))
+    return JSONResponse({"status": "switched", "dataset": summary})
 
 
 @router.post("/select-dataset")
 async def select_dataset(request: Request) -> JSONResponse:
-    """Switch analysis to an existing dataset under ./data."""
+    """Switch analysis to one of this user's previously-uploaded datasets."""
     try:
         payload = await request.json()
         path = (payload or {}).get("path")
@@ -185,17 +191,19 @@ async def select_dataset(request: Request) -> JSONResponse:
 
 @router.post("/upload-dataset")
 async def upload_dataset(request: Request, file: UploadFile = File(...)) -> JSONResponse:
-    """Upload a CSV/Parquet file and immediately analyse it.
+    """Upload a CSV/Parquet into *this user's* private workspace and analyse it."""
+    sessions = getattr(request.app.state, "sessions", None)
+    if sessions is None:
+        return JSONResponse({"status": "unavailable"}, status_code=503)
+    uid = _uid(request)
 
-    The agent re-profiles the new file, picks a target, and the next cycle runs
-    on it — making Epiphany work for any dataset, any domain.
-    """
     name = _safe_name(file.filename or "dataset.csv")
     if Path(name).suffix.lower() not in _DATA_EXTS:
         return JSONResponse({"error": "only .csv or .parquet files are supported"}, status_code=400)
 
-    _UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
-    dest = _UPLOAD_DIR / name
+    up = sessions.uploads_dir(uid)
+    up.mkdir(parents=True, exist_ok=True)
+    dest = up / name
     try:
         content = await file.read()
         if not content:
@@ -206,7 +214,7 @@ async def upload_dataset(request: Request, file: UploadFile = File(...)) -> JSON
     except Exception as exc:  # noqa: BLE001
         return JSONResponse({"error": f"upload failed: {exc}"}, status_code=400)
 
-    # Validate it actually loads as a table before switching to it.
+    # Validate it loads as a table before switching to it.
     try:
         import pandas as pd
 
@@ -221,17 +229,12 @@ async def upload_dataset(request: Request, file: UploadFile = File(...)) -> JSON
     return await _switch_dataset(request, str(dest))
 
 
+# ── Run a cycle (per-user) ───────────────────────────────────────────────
 @router.post("/run")
 async def run_cycle(request: Request) -> JSONResponse:
-    """Trigger a single agent cycle on demand (non-blocking).
-
-    Accepts an optional JSON body ``{"user_goal": "..."}`` from the dashboard's
-    Mission Control. When a goal is supplied, the agent investigates that
-    specific business question; otherwise it runs its default autonomous pass
-    (e.g. the header's "Force Sync" button sends no body).
-    """
-    orchestrator = getattr(request.app.state, "orchestrator", None)
-    if orchestrator is None:
+    """Trigger a single agent cycle for this user (non-blocking)."""
+    orch = await _orch(request)
+    if orch is None:
         return JSONResponse({"status": "unavailable"}, status_code=503)
 
     user_goal: str | None = None
@@ -242,49 +245,39 @@ async def run_cycle(request: Request) -> JSONResponse:
             if isinstance(raw, str) and raw.strip():
                 user_goal = raw.strip()[:500]
     except Exception:
-        # No body / invalid JSON (e.g. Force Sync) -> default autonomous cycle.
         user_goal = None
 
-    # Fire-and-forget so the HTTP call returns immediately; progress streams
-    # over the WebSocket. The orchestrator guards against overlapping cycles.
-    asyncio.create_task(orchestrator.run_cycle(user_goal=user_goal))
+    asyncio.create_task(orch.run_cycle(user_goal=user_goal))
     return JSONResponse({"status": "started", "user_goal": user_goal})
 
 
+# ── Read endpoints (per-user) ────────────────────────────────────────────
 @router.get("/hypotheses")
 async def list_hypotheses(request: Request, limit: int = 50) -> JSONResponse:
-    """Return recorded hypotheses (newest first) for the Hypothesis Log."""
-    orchestrator = getattr(request.app.state, "orchestrator", None)
-    if orchestrator is None:
+    orch = await _orch(request)
+    if orch is None:
         return JSONResponse({"status": "unavailable"}, status_code=503)
-    rows = await orchestrator.repository.list_hypotheses(limit=limit)
+    rows = await orch.repository.list_hypotheses(limit=limit)
     return JSONResponse({"hypotheses": rows})
 
 
 @router.get("/deployments")
 async def list_deployments(request: Request, limit: int = 50) -> JSONResponse:
-    """Return recorded deployments (merge requests) for the Deployments view."""
-    orchestrator = getattr(request.app.state, "orchestrator", None)
-    if orchestrator is None:
+    orch = await _orch(request)
+    if orch is None:
         return JSONResponse({"status": "unavailable"}, status_code=503)
-    rows = await orchestrator.repository.list_deployments(limit=limit)
+    rows = await orch.repository.list_deployments(limit=limit)
     return JSONResponse({"deployments": rows})
 
 
 @router.get("/interventions")
 async def interventions(request: Request, limit: int = 20) -> JSONResponse:
-    """Return the agent's autonomous interventions for the dashboard table.
-
-    An *intervention* is a recorded hypothesis the agent acted on: its
-    discovery, the validation verdict, and — when significant — the merge
-    request it autonomously opened. Composed from the live SQLite history so
-    the table hydrates entirely from real agent activity (no static rows).
-    """
-    orchestrator = getattr(request.app.state, "orchestrator", None)
-    if orchestrator is None:
+    """The agent's interventions for this user, composed from their history."""
+    orch = await _orch(request)
+    if orch is None:
         return JSONResponse({"status": "unavailable"}, status_code=503)
 
-    repo = orchestrator.repository
+    repo = orch.repository
     hypotheses = await repo.list_hypotheses(limit=limit)
     deployments = await repo.list_deployments(limit=limit)
     by_hid = {d.get("hypothesis_id"): d for d in deployments}
@@ -317,54 +310,35 @@ async def interventions(request: Request, limit: int = 20) -> JSONResponse:
 
 @router.get("/metrics")
 async def metrics(request: Request) -> JSONResponse:
-    """Return live aggregate metrics powering the dashboard's hero cards."""
-    orchestrator = getattr(request.app.state, "orchestrator", None)
-    if orchestrator is None:
+    orch = await _orch(request)
+    if orch is None:
         return JSONResponse({"status": "unavailable"}, status_code=503)
-    data = await orchestrator.repository.metrics()
-    return JSONResponse(data)
+    return JSONResponse(await orch.repository.metrics())
 
 
 @router.get("/scatter")
 async def scatter(request: Request) -> JSONResponse:
-    """Deprecated alias for :func:`latest_insight`.
-
-    Superseded by ``/api/agent/latest-insight``, which plots whichever
-    feature/target the agent has actually validated on the real data.
-    """
-    response = await latest_insight(request)
-    return response
+    """Deprecated alias for :func:`latest_insight`."""
+    return await latest_insight(request)
 
 
 @router.get("/latest-insight")
 async def latest_insight(request: Request) -> JSONResponse:
-    """Return the most recently *validated* discovery for the dynamic chart.
-
-    Looks up the latest significant hypothesis (falling back to the latest
-    hypothesis of any kind), then samples the real relationship between the
-    proven ``feature`` and ``target`` from the dataset so the dashboard renders
-    whichever driver the agent decided to validate — with axis labels and a
-    title bound to that discovery rather than a fixed column.
-    """
-    orchestrator = getattr(request.app.state, "orchestrator", None)
-    if orchestrator is None:
+    """This user's most recently validated discovery, for the dynamic chart."""
+    orch = await _orch(request)
+    if orch is None:
         return JSONResponse({"status": "unavailable"}, status_code=503)
 
-    latest = await orchestrator.repository.latest_significant_hypothesis()
+    latest = await orch.repository.latest_significant_hypothesis()
     if not latest:
-        latest = await orchestrator.repository.latest_hypothesis()
+        latest = await orch.repository.latest_hypothesis()
 
     if not latest:
         return JSONResponse(
             {
-                "feature": None,
-                "target": None,
-                "points": [],
-                "mode": "local",
-                "is_significant": False,
-                "x_label": "Discovered Driver",
-                "y_label": "Outcome Probability",
-                "title": "Awaiting first discovery",
+                "feature": None, "target": None, "points": [], "mode": "local",
+                "is_significant": False, "x_label": "Discovered Driver",
+                "y_label": "Outcome Probability", "title": "Awaiting first discovery",
             }
         )
 
@@ -377,7 +351,7 @@ async def latest_insight(request: Request) -> JSONResponse:
 
     dist = {"points": [], "mode": "local"}
     if feature and target:
-        dist = await orchestrator.data.feature_target_points(feature, target)
+        dist = await orch.data.feature_target_points(feature, target)
 
     x_label = _humanize(feature)
     y_label = f"{_humanize(target)} Rate"
@@ -400,11 +374,11 @@ async def latest_insight(request: Request) -> JSONResponse:
 
 @router.get("/latest-model")
 async def latest_model(request: Request) -> JSONResponse:
-    """Return the model script generated for the most recent hypothesis."""
-    orchestrator = getattr(request.app.state, "orchestrator", None)
-    if orchestrator is None:
+    """The model script generated for this user's most recent hypothesis."""
+    orch = await _orch(request)
+    if orch is None:
         return JSONResponse({"status": "unavailable"}, status_code=503)
-    latest = await orchestrator.repository.latest_hypothesis()
+    latest = await orch.repository.latest_hypothesis()
     if not latest or not latest.get("metadata"):
         return JSONResponse({"script": None, "filename": None, "hypothesis": None})
     script = render_model_script(latest["metadata"])
