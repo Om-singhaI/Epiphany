@@ -1,0 +1,2 @@
+# Keep the static directory tracked by Git even while empty.
+# First-party JS/CSS assets will live here; Tailwind & Chart.js load via CDN.

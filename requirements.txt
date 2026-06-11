@@ -1,0 +1,45 @@
+# Epiphany — Autonomous AI Data Scientist
+# Phase 1 + Phase 2 + Phase 3 (Google ADK) dependencies
+
+# ── Web framework ────────────────────────────────────────────────────────
+# Lower bounds; the Google ADK requires newer FastAPI/Starlette/websockets and
+# will pull compatible versions on install.
+fastapi>=0.115.6
+uvicorn[standard]>=0.34.0
+jinja2>=3.1.5
+websockets>=14.1
+python-multipart>=0.0.20
+
+# ── Configuration ────────────────────────────────────────────────────────
+pydantic-settings>=2.7.0
+
+# ── Persistence (Phase 3) ────────────────────────────────────────────────
+aiosqlite>=0.20.0
+
+# ── Step 1 Trigger (Fivetran) — also used by FastAPI TestClient ──────────
+httpx>=0.28.0
+
+# ── Step 2 Explore (Elastic) ─────────────────────────────────────────────
+elasticsearch>=8.17.0
+aiohttp>=3.11.0
+
+# ── Step 3 Reason (Gemini) ───────────────────────────────────────────────
+# google-genai drives both the simple API-key path and the Vertex AI path.
+google-genai>=1.0.0
+# Optional: only needed for the enterprise Vertex AI path (GCP project).
+google-cloud-aiplatform>=1.79.0
+
+# ── Orchestration (Google Agent Development Kit) ──────────────────────────
+google-adk>=2.0.0
+
+# ── Step 4 Validate (adaptive statistics sandbox) ────────────────────────
+numpy>=2.0
+scipy>=1.14
+pandas>=2.2
+
+# ── Deploy: real model training + persistence ────────────────────────────
+scikit-learn>=1.5
+joblib>=1.4
+
+# ── Step 5 Deploy (GitLab, optional) ─────────────────────────────────────
+python-gitlab>=5.3.0

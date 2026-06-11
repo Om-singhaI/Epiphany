@@ -1,0 +1,952 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Epiphany | Autonomous Data Scientist</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+        body { font-family: 'Inter', sans-serif; background-color: #0f172a; color: #f8fafc; overflow-x: hidden; }
+        .font-mono { font-family: 'JetBrains Mono', monospace; }
+        .glass-card { background: rgba(30, 41, 59, 0.7); backdrop-filter: blur(12px); border: 1px solid rgba(148, 163, 184, 0.1); border-radius: 12px; }
+        .sidebar { background: #0b1120; border-right: 1px solid rgba(148, 163, 184, 0.1); }
+        
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: #0f172a; }
+        ::-webkit-scrollbar-thumb { background: #334155; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #475569; }
+
+        .pulse-green { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7); animation: pulse-g 2s infinite; }
+        @keyframes pulse-g {
+            0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7); }
+            70% { transform: scale(1); box-shadow: 0 0 0 6px rgba(16, 185, 129, 0); }
+            100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
+        }
+        
+        .agent-log {
+            background: #020617;
+            border-left: 3px solid #3b82f6;
+        }
+
+        /* Blinking cursor appended to the most recent streaming log line. */
+        .type-cursor::after {
+            content: '\2588';
+            margin-left: 2px;
+            color: #38bdf8;
+            animation: blink 1s steps(2, start) infinite;
+        }
+        @keyframes blink { to { visibility: hidden; } }
+    </style>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: { 400: '#38bdf8', 500: '#0ea5e9', 600: '#0284c7' },
+                        accent: { 400: '#a78bfa', 500: '#8b5cf6', 600: '#7c3aed' }
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="flex h-screen antialiased selection:bg-brand-500 selection:text-white">
+
+    <!-- Sidebar -->
+    <aside class="w-64 sidebar flex flex-col hidden md:flex z-20">
+        <div class="h-16 flex items-center px-6 border-b border-slate-800">
+            <div class="flex items-center gap-3 text-xl font-bold tracking-tight">
+                <i class="fa-solid fa-atom text-brand-400"></i>
+                <span class="bg-clip-text text-transparent bg-gradient-to-r from-white to-slate-400">Epiphany</span>
+            </div>
+        </div>
+        
+        <div class="p-4 flex-1">
+            <div class="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-4 mt-2">Platform</div>
+            <nav class="space-y-1">
+                <a href="#" class="flex items-center gap-3 px-3 py-2 bg-brand-500/10 text-brand-400 rounded-lg border border-brand-500/20 transition-colors">
+                    <i class="fa-solid fa-chart-line w-5"></i>
+                    <span class="font-medium">Live Dashboard</span>
+                </a>
+                <a href="#" id="nav-hypotheses" class="flex items-center gap-3 px-3 py-2 text-slate-400 hover:text-slate-100 hover:bg-slate-800 rounded-lg transition-colors">
+                    <i class="fa-solid fa-flask w-5"></i>
+                    <span class="font-medium">Hypothesis Log</span>
+                </a>
+                <a href="#" id="nav-deployments" class="flex items-center gap-3 px-3 py-2 text-slate-400 hover:text-slate-100 hover:bg-slate-800 rounded-lg transition-colors">
+                    <i class="fa-brands fa-gitlab w-5"></i>
+                    <span class="font-medium">Deployments</span>
+                </a>
+            </nav>
+
+            <div class="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-4 mt-8">MCP Integrations</div>
+            <nav class="space-y-2">
+                <div class="flex items-center justify-between px-3 py-2 rounded-lg bg-slate-800/50">
+                    <div class="flex items-center gap-2"><i class="fa-solid fa-database text-blue-400 text-sm"></i> <span class="text-sm font-medium">Fivetran Sync</span></div>
+                    <div id="dot-fivetran" class="w-2 h-2 rounded-full bg-slate-600" title="Connecting…"></div>
+                </div>
+                <div class="flex items-center justify-between px-3 py-2 rounded-lg bg-slate-800/50">
+                    <div class="flex items-center gap-2"><i class="fa-solid fa-magnifying-glass text-yellow-400 text-sm"></i> <span class="text-sm font-medium">Elastic Search</span></div>
+                    <div id="dot-elastic" class="w-2 h-2 rounded-full bg-slate-600" title="Connecting…"></div>
+                </div>
+                <div class="flex items-center justify-between px-3 py-2 rounded-lg bg-slate-800/50">
+                    <div class="flex items-center gap-2"><i class="fa-solid fa-wand-magic-sparkles text-violet-400 text-sm"></i> <span class="text-sm font-medium">Gemini Reason</span></div>
+                    <div id="dot-gemini" class="w-2 h-2 rounded-full bg-slate-600" title="Connecting…"></div>
+                </div>
+                <div class="flex items-center justify-between px-3 py-2 rounded-lg bg-slate-800/50">
+                    <div class="flex items-center gap-2"><i class="fa-brands fa-gitlab text-orange-500 text-sm"></i> <span class="text-sm font-medium">GitLab CI/CD</span></div>
+                    <div id="dot-gitlab" class="w-2 h-2 rounded-full bg-slate-600" title="Connecting…"></div>
+                </div>
+            </nav>
+        </div>
+        
+        <div class="p-4 border-t border-slate-800">
+            <div class="flex items-center gap-3">
+                <div class="w-8 h-8 rounded-full bg-gradient-to-tr from-brand-500 to-accent-500 flex items-center justify-center">
+                    <i class="fa-solid fa-robot text-xs text-white"></i>
+                </div>
+                <div>
+                    <div class="text-sm font-medium text-white">Gemini 3 Core</div>
+                    <div class="text-xs text-emerald-400">Agent Active</div>
+                </div>
+            </div>
+        </div>
+    </aside>
+
+    <!-- Main Content -->
+    <main class="flex-1 flex flex-col h-screen overflow-y-auto relative">
+        <!-- Top Header -->
+        <header class="h-16 flex items-center justify-between px-8 border-b border-slate-800/50 bg-slate-900/80 backdrop-blur-md sticky top-0 z-10">
+            <h1 class="text-lg font-semibold text-slate-200">Enterprise Telemetry Intelligence</h1>
+            <div class="flex items-center gap-4">
+                <div class="bg-slate-800 text-slate-300 text-xs px-3 py-1.5 rounded-md font-mono border border-slate-700">
+                    <i class="fa-solid fa-bolt text-yellow-400 mr-2"></i>Last Insight: <span id="last-insight">never</span>
+                </div>
+                <button id="force-sync" class="bg-brand-600 hover:bg-brand-500 text-white px-4 py-1.5 rounded-md text-sm font-medium transition-colors shadow-lg shadow-brand-500/20 disabled:opacity-50">
+                    Force Sync
+                </button>
+            </div>
+        </header>
+
+        <div class="p-8 max-w-7xl mx-auto w-full space-y-6">
+
+            <!-- Mission Control: user-driven natural-language goal for the agent -->
+            <div class="glass-card p-6 border border-accent-500/30 shadow-[0_0_30px_rgba(168,85,247,0.08)] relative overflow-hidden">
+                <div class="absolute right-0 top-0 w-40 h-40 bg-accent-500/10 rounded-full blur-3xl -mr-12 -mt-12"></div>
+                <div class="flex items-center gap-2 mb-1">
+                    <i class="fa-solid fa-crosshairs text-accent-400"></i>
+                    <h2 class="font-semibold text-white">Mission Control</h2>
+                    <span class="text-[10px] uppercase tracking-wider bg-accent-500/15 text-accent-300 px-2 py-0.5 rounded-full border border-accent-500/30">Agentic Mission</span>
+                </div>
+                <p class="text-xs text-slate-400 mb-4">Describe a business question in plain language. The agent will explore your data, formulate a hypothesis, validate it, and ship a model.</p>
+                <div class="flex flex-col gap-3">
+                    <textarea id="mission-input" rows="2"
+                        class="w-full bg-slate-900/70 border border-slate-700 focus:border-accent-500 focus:ring-1 focus:ring-accent-500/40 outline-none rounded-lg px-4 py-3 text-sm text-slate-100 placeholder-slate-500 resize-none transition-colors"
+                        placeholder="e.g. Analyze why our Enterprise users are downgrading"></textarea>
+                    <div class="flex flex-wrap items-center gap-2">
+                        <span class="text-xs text-slate-500 mr-1">Try:</span>
+                        <button type="button" class="mission-example text-xs bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 px-2.5 py-1 rounded-full transition-colors">Why are Enterprise users downgrading?</button>
+                        <button type="button" class="mission-example text-xs bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 px-2.5 py-1 rounded-full transition-colors">What drives 30-day churn?</button>
+                        <button type="button" class="mission-example text-xs bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 px-2.5 py-1 rounded-full transition-colors">Which onboarding step loses the most users?</button>
+                    </div>
+                    <div class="flex items-center justify-between gap-3">
+                        <div id="mission-status" class="text-xs text-slate-500"></div>
+                        <button id="deploy-agent" type="button"
+                            class="bg-accent-600 hover:bg-accent-500 text-white px-5 py-2 rounded-md text-sm font-semibold transition-colors shadow-lg shadow-accent-500/20 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2">
+                            <i class="fa-solid fa-rocket"></i> <span id="deploy-agent-label">Deploy Agent</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Hero Stats Row — values hydrate from /api/agent/metrics on load. -->
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+                <div class="glass-card p-5">
+                    <div class="text-slate-400 text-sm font-medium mb-1">Rows Analyzed</div>
+                    <div id="stat-rows" class="text-2xl font-bold text-white mb-2"><i class="fa-solid fa-spinner fa-spin text-slate-600 text-lg"></i></div>
+                    <div class="text-xs text-emerald-400 flex items-center gap-1"><i class="fa-solid fa-arrow-trend-up"></i> <span id="stat-rows-sub">—</span></div>
+                </div>
+                <div class="glass-card p-5">
+                    <div class="text-slate-400 text-sm font-medium mb-1">Hypotheses Tested</div>
+                    <div id="stat-hypotheses" class="text-2xl font-bold text-white mb-2"><i class="fa-solid fa-spinner fa-spin text-slate-600 text-lg"></i></div>
+                    <div class="text-xs text-slate-500">Autonomous Sandbox</div>
+                </div>
+                <div class="glass-card p-5 border border-brand-500/30 relative overflow-hidden">
+                    <div class="absolute right-0 top-0 w-24 h-24 bg-brand-500/10 rounded-full blur-2xl -mr-8 -mt-8"></div>
+                    <div class="text-brand-300 text-sm font-medium mb-1">Significant Discoveries</div>
+                    <div id="stat-discoveries" class="text-2xl font-bold text-white mb-2 text-shadow"><i class="fa-solid fa-spinner fa-spin text-slate-600 text-lg"></i></div>
+                    <div class="text-xs text-brand-400 flex items-center gap-1"><i class="fa-solid fa-check-circle"></i> p &lt; 0.05</div>
+                </div>
+                <div class="glass-card p-5 border border-accent-500/30 relative overflow-hidden">
+                    <div class="absolute right-0 top-0 w-24 h-24 bg-accent-500/10 rounded-full blur-2xl -mr-8 -mt-8"></div>
+                    <div class="text-accent-300 text-sm font-medium mb-1">Models Deployed</div>
+                    <div id="stat-deployments" class="text-2xl font-bold text-white mb-2 text-shadow"><i class="fa-solid fa-spinner fa-spin text-slate-600 text-lg"></i></div>
+                    <div class="text-xs text-accent-400 flex items-center gap-1"><i class="fa-brands fa-gitlab"></i> Merge Requests opened</div>
+                </div>
+            </div>
+
+            <!-- Active Discovery Section -->
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                
+                <!-- Left Column: Agent Feed & Code -->
+                <div class="lg:col-span-2 space-y-6">
+                    <div class="glass-card flex flex-col h-[500px]">
+                        <div class="border-b border-slate-700/50 p-4 flex justify-between items-center bg-slate-800/30 rounded-t-xl">
+                            <h2 class="font-semibold text-slate-200 flex items-center gap-2">
+                                <i class="fa-solid fa-satellite-dish text-brand-400"></i> Active Agent Stream
+                            </h2>
+                            <!-- Live status badge, driven by the WebSocket connection state. -->
+                            <span id="stream-status" class="text-xs font-mono bg-slate-500/10 text-slate-400 px-2 py-1 rounded border border-slate-500/20">STATUS: CONNECTING</span>
+                        </div>
+                        
+                        <!-- Terminal Feed: populated live via the /ws/agent-stream WebSocket.
+                             Starts empty except for a single dynamic standby line,
+                             which is cleared the instant the first real log arrives. -->
+                        <div id="agent-stream" class="flex-1 overflow-y-auto p-4 space-y-4 font-mono text-sm">
+                            <div id="agent-standby" class="flex items-center gap-2 text-slate-500 text-xs italic">
+                                <span class="inline-block w-1.5 h-1.5 rounded-full bg-slate-600 animate-pulse"></span>
+                                Agent standing by — awaiting telemetry…
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Right Column: Visualization & Deployment -->
+                <div class="space-y-6">
+                    <div class="glass-card p-5 h-[240px] flex flex-col">
+                        <div class="flex justify-between items-start mb-4">
+                            <div>
+                                <h3 id="insight-title" class="font-medium text-slate-200">Discovered Driver Analysis</h3>
+                                <p id="insight-subtitle" class="text-[11px] text-slate-500">Awaiting the agent's first validated discovery…</p>
+                            </div>
+                            <i class="fa-solid fa-chart-scatter text-slate-500"></i>
+                        </div>
+                        <div class="flex-1 w-full relative">
+                            <canvas id="insightChart"></canvas>
+                        </div>
+                    </div>
+
+                    <div class="glass-card p-0 overflow-hidden border-brand-500/30 shadow-[0_0_20px_rgba(2,132,199,0.1)]">
+                        <div class="bg-brand-900/20 p-4 border-b border-slate-700/50">
+                            <div class="flex items-center gap-2 mb-1">
+                                <i class="fa-brands fa-gitlab text-orange-500 text-lg"></i>
+                                <h3 class="font-semibold text-white">Autonomous Deployment</h3>
+                            </div>
+                            <p id="deploy-subtitle" class="text-xs text-slate-400">Waiting for the first validated discovery…</p>
+                        </div>
+                        <div class="p-4 bg-slate-900">
+                            <div class="mb-3">
+                                <div class="text-xs text-slate-500 mb-1">Target Branch</div>
+                                <div id="deploy-branch" class="text-sm text-brand-300 font-mono bg-slate-800 px-2 py-1 rounded inline-block">—</div>
+                            </div>
+                            <div class="mb-4">
+                                <div class="text-xs text-slate-500 mb-1">Generated Asset</div>
+                                <div class="flex items-center gap-2 text-sm text-slate-300">
+                                    <i class="fa-brands fa-python text-yellow-400"></i> <span id="deploy-asset" class="font-mono">—</span>
+                                </div>
+                            </div>
+                            <a id="deploy-mr-link" href="#" target="_blank" rel="noopener" class="pointer-events-none opacity-50 w-full bg-slate-800 hover:bg-slate-700 border border-slate-600 text-white py-2 rounded text-sm transition-colors flex items-center justify-center gap-2">
+                                <i class="fa-solid fa-code-merge text-slate-400"></i> <span id="deploy-mr-label">No Merge Request yet</span>
+                            </a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Code View Section -->
+            <div class="glass-card rounded-xl overflow-hidden mt-6">
+                <div class="flex items-center justify-between bg-[#1e293b] px-4 py-2 border-b border-slate-700">
+                    <div class="flex gap-2">
+                        <div class="w-3 h-3 rounded-full bg-red-500"></div>
+                        <div class="w-3 h-3 rounded-full bg-yellow-500"></div>
+                        <div class="w-3 h-3 rounded-full bg-green-500"></div>
+                    </div>
+                    <div class="text-xs font-mono text-slate-400">Generated Python Code (<span id="code-filename">awaiting_model.py</span>)</div>
+                    <div><i id="code-copy" class="fa-regular fa-copy text-slate-500 hover:text-white cursor-pointer"></i></div>
+                </div>
+                <div class="p-4 bg-[#0d1117] overflow-x-auto">
+<pre id="code-block" class="font-mono text-sm text-slate-300 leading-relaxed"><span class="text-slate-500"># Waiting for the agent to validate a hypothesis and generate a model…</span></pre>
+                </div>
+            </div>
+
+            <!-- Autonomous Interventions — hydrates from /api/agent/interventions. -->
+            <div class="glass-card rounded-xl overflow-hidden mt-6">
+                <div class="flex items-center justify-between p-4 border-b border-slate-700/50 bg-slate-800/30">
+                    <h2 class="font-semibold text-slate-200 flex items-center gap-2">
+                        <i class="fa-solid fa-bolt text-accent-400"></i> Autonomous Interventions
+                    </h2>
+                    <span class="text-xs text-slate-500">Driven by live agent history</span>
+                </div>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-sm">
+                        <thead>
+                            <tr class="text-left text-xs uppercase tracking-wider text-slate-500 border-b border-slate-800">
+                                <th class="px-4 py-3 font-medium">When</th>
+                                <th class="px-4 py-3 font-medium">Discovered Driver</th>
+                                <th class="px-4 py-3 font-medium">Outcome</th>
+                                <th class="px-4 py-3 font-medium">p-value</th>
+                                <th class="px-4 py-3 font-medium">Action</th>
+                            </tr>
+                        </thead>
+                        <tbody id="interventions-body">
+                            <tr>
+                                <td colspan="5" class="px-4 py-6 text-center text-slate-500 text-sm italic">
+                                    <i class="fa-solid fa-spinner fa-spin mr-2"></i> Loading interventions…
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+        </div>
+    </main>
+
+    <!-- Slide-over panel for Hypothesis Log / Deployments, fed by /api/agent/* -->
+    <div id="panel-overlay" class="fixed inset-0 z-30 hidden">
+        <div id="panel-backdrop" class="absolute inset-0 bg-black/60 backdrop-blur-sm"></div>
+        <aside class="absolute right-0 top-0 h-full w-full max-w-xl bg-slate-900 border-l border-slate-700 shadow-2xl flex flex-col">
+            <div class="h-16 flex items-center justify-between px-6 border-b border-slate-800">
+                <h2 id="panel-title" class="text-lg font-semibold text-slate-100 flex items-center gap-2">
+                    <i class="fa-solid fa-flask text-brand-400"></i> Hypothesis Log
+                </h2>
+                <button id="panel-close" class="text-slate-400 hover:text-white text-xl leading-none px-2">&times;</button>
+            </div>
+            <div id="panel-body" class="flex-1 overflow-y-auto p-6 space-y-3">
+                <div class="text-slate-500 text-sm italic">Loading…</div>
+            </div>
+        </aside>
+    </div>
+
+    <script>
+        // ── Chart.js Visualization — fed by the agent's latest validated ─────
+        //    discovery via /api/agent/latest-insight. The axes, title and
+        //    tooltip all rebind to whichever feature/target the agent proved.
+        let insightChart = null;
+        document.addEventListener('DOMContentLoaded', function () {
+            const ctx = document.getElementById('insightChart').getContext('2d');
+
+            insightChart = new Chart(ctx, {
+                type: 'scatter',
+                data: {
+                    datasets: [{
+                        label: 'Discovered relationship',
+                        data: [],
+                        backgroundColor: 'rgba(56, 189, 248, 0.7)',
+                        borderColor: 'rgba(56, 189, 248, 1)',
+                        pointRadius: 5,
+                        showLine: true,
+                        tension: 0.3,
+                        borderWidth: 2
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: {
+                            callbacks: {
+                                label: (c) => {
+                                    const xl = insightChart._xLabel || 'driver';
+                                    const yl = insightChart._yLabel || 'outcome';
+                                    return `${xl} ${c.parsed.x} → ${(c.parsed.y * 100).toFixed(1)}% ${yl}`;
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        x: {
+                            title: { display: true, text: 'Discovered Driver', color: '#94a3b8', font: { size: 11 } },
+                            grid: { color: 'rgba(148, 163, 184, 0.1)' },
+                            ticks: { color: '#64748b' }
+                        },
+                        y: {
+                            title: { display: true, text: 'Outcome Probability', color: '#94a3b8', font: { size: 11 } },
+                            grid: { color: 'rgba(148, 163, 184, 0.1)' },
+                            ticks: { color: '#64748b' },
+                            min: 0,
+                            max: 1
+                        }
+                    }
+                }
+            });
+
+            async function refreshChart() {
+                try {
+                    const r = await fetch('/api/agent/latest-insight');
+                    if (!r.ok) return;
+                    const data = await r.json();
+                    const pts = (data.points || []).map((p) => ({ x: p.x, y: p.y }));
+                    insightChart.data.datasets[0].data = pts;
+                    insightChart.data.datasets[0].borderColor =
+                        data.mode === 'live' ? 'rgba(56, 189, 248, 1)' : 'rgba(148, 163, 184, 0.8)';
+
+                    // Rebind axis labels, title and tooltip to the live discovery.
+                    insightChart._xLabel = data.x_label || 'Driver';
+                    insightChart._yLabel = data.y_label || 'Outcome';
+                    insightChart.options.scales.x.title.text = data.x_label || 'Discovered Driver';
+                    insightChart.options.scales.y.title.text = data.y_label || 'Outcome Probability';
+                    insightChart.update('none');
+
+                    const titleEl = document.getElementById('insight-title');
+                    const subEl = document.getElementById('insight-subtitle');
+                    if (titleEl && data.title) titleEl.textContent = data.title;
+                    if (subEl) {
+                        if (data.feature) {
+                            const sig = data.is_significant ? 'validated' : 'exploring';
+                            const tag = data.mode === 'live' ? 'live telemetry' : 'simulated';
+                            subEl.textContent = `Agent-${sig} driver · ${tag}`;
+                        } else {
+                            subEl.textContent = "Awaiting the agent's first validated discovery…";
+                        }
+                    }
+                } catch (e) {
+                    console.error('insight refresh failed', e);
+                }
+            }
+            refreshChart();
+            setInterval(refreshChart, 15000);
+
+            // Refresh instantly when the agent ships a model (WebSocket trigger).
+            document.addEventListener('epiphany:cycle-updated', refreshChart);
+        });
+
+        // ── Live Agent Stream (WebSocket) ─────────────────────────────────────
+        (function () {
+            const feed = document.getElementById('agent-stream');
+            const statusBadge = document.getElementById('stream-status');
+
+            // Visual styling per log level, mirroring the original static mock-up.
+            const LEVEL_STYLES = {
+                info:       { border: 'border-l-blue-500',    label: 'text-blue-400',    icon: 'fa-arrow-right' },
+                warning:    { border: 'border-l-yellow-500',  label: 'text-yellow-400',  icon: 'fa-arrow-right' },
+                hypothesis: { border: 'border-l-accent-500',  label: 'text-accent-400',  icon: 'fa-lightbulb', bg: 'bg-accent-900/10' },
+                success:    { border: 'border-l-emerald-500', label: 'text-emerald-400', icon: 'fa-microchip', bg: 'bg-emerald-900/10' },
+            };
+
+            // Stage → matching loop status shown in the header badge.
+            const STAGE_STATUS = {
+                trigger:  'INGESTING',
+                explore:  'EXPLORING',
+                reason:   'REASONING',
+                validate: 'VALIDATING',
+                deploy:   'DEPLOYING',
+                system:   'IDLE',
+            };
+
+            function setStatus(text, ok) {
+                statusBadge.textContent = 'STATUS: ' + text;
+                statusBadge.className =
+                    'text-xs font-mono px-2 py-1 rounded border ' +
+                    (ok
+                        ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
+                        : 'bg-red-500/10 text-red-400 border-red-500/20');
+            }
+
+            // Type a message out character-by-character into the given element.
+            function typeMessage(el, text) {
+                return new Promise((resolve) => {
+                    el.classList.add('type-cursor');
+                    let i = 0;
+                    const tick = () => {
+                        if (i <= text.length) {
+                            el.textContent = text.slice(0, i);
+                            i++;
+                            feed.scrollTop = feed.scrollHeight;
+                            setTimeout(tick, 12);
+                        } else {
+                            el.classList.remove('type-cursor');
+                            resolve();
+                        }
+                    };
+                    tick();
+                });
+            }
+
+            // Render a single structured log event into the terminal.
+            async function renderEvent(evt) {
+                // The first real event retires the "standing by" placeholder.
+                const standby = document.getElementById('agent-standby');
+                if (standby) standby.remove();
+
+                const style = LEVEL_STYLES[evt.level] || LEVEL_STYLES.info;
+
+                const wrapper = document.createElement('div');
+                wrapper.className =
+                    `agent-log p-3 rounded text-slate-300 ${style.border} ${style.bg || ''}`;
+
+                const header = document.createElement('div');
+                header.className = `${style.label} text-xs mb-1`;
+                const simBadge = evt.mode === 'simulation'
+                    ? ' <span class="text-slate-500 border border-slate-600 rounded px-1 ml-1">SIM</span>'
+                    : '';
+                header.innerHTML =
+                    `[${evt.timestamp}] ${evt.source} ` +
+                    `<i class="fa-solid ${style.icon} mx-1"></i> ${evt.stage.toUpperCase()}${simBadge}`;
+
+                const body = document.createElement('div');
+
+                wrapper.appendChild(header);
+                wrapper.appendChild(body);
+                feed.appendChild(wrapper);
+                feed.scrollTop = feed.scrollHeight;
+
+                setStatus(STAGE_STATUS[evt.stage] || 'ACTIVE', true);
+                await typeMessage(body, evt.message);
+
+                // When the agent ships a model (final GITLAB MCP success log),
+                // pull the freshest insight/model/deployment so the UI updates
+                // instantly without a manual refresh.
+                if (evt.stage === 'deploy' && evt.level === 'success') {
+                    document.dispatchEvent(new CustomEvent('epiphany:cycle-updated'));
+                }
+
+                // Keep the terminal from growing without bound.
+                while (feed.children.length > 30) {
+                    feed.removeChild(feed.firstChild);
+                }
+            }
+
+            // Serialise rendering so log lines type out one at a time, in order.
+            let renderChain = Promise.resolve();
+            function enqueue(evt) {
+                renderChain = renderChain.then(() => renderEvent(evt));
+            }
+
+            function connect() {
+                const proto = window.location.protocol === 'https:' ? 'wss' : 'ws';
+                const ws = new WebSocket(`${proto}://${window.location.host}/ws/agent-stream`);
+
+                ws.onopen = () => {
+                    // Keep the standby line until the first real log streams in;
+                    // only reset the feed if a prior session left stale entries.
+                    if (!document.getElementById('agent-standby')) {
+                        feed.innerHTML =
+                            '<div id="agent-standby" class="flex items-center gap-2 text-slate-500 text-xs italic">' +
+                            '<span class="inline-block w-1.5 h-1.5 rounded-full bg-slate-600 animate-pulse"></span>' +
+                            'Agent standing by \u2014 awaiting telemetry\u2026</div>';
+                    }
+                    setStatus('ONLINE', true);
+                };
+
+                ws.onmessage = (event) => {
+                    try {
+                        enqueue(JSON.parse(event.data));
+                    } catch (e) {
+                        console.error('Malformed agent event', e);
+                    }
+                };
+
+                ws.onclose = () => {
+                    setStatus('RECONNECTING', false);
+                    setTimeout(connect, 2000); // auto-reconnect with backoff
+                };
+
+                ws.onerror = () => ws.close();
+            }
+
+            connect();
+
+            // "Force Sync" triggers an on-demand agent cycle via the control API.
+            const forceBtn = document.getElementById('force-sync');
+            if (forceBtn) {
+                forceBtn.addEventListener('click', async () => {
+                    forceBtn.disabled = true;
+                    try {
+                        await fetch('/api/agent/run', { method: 'POST' });
+                    } catch (e) {
+                        console.error('Force sync failed', e);
+                    } finally {
+                        setTimeout(() => { forceBtn.disabled = false; }, 1500);
+                    }
+                });
+            }
+
+            // "Deploy Agent" dispatches a user-defined mission to the orchestrator.
+            const missionInput = document.getElementById('mission-input');
+            const deployBtn = document.getElementById('deploy-agent');
+            const deployLabel = document.getElementById('deploy-agent-label');
+            const missionStatus = document.getElementById('mission-status');
+
+            document.querySelectorAll('.mission-example').forEach((btn) => {
+                btn.addEventListener('click', () => {
+                    if (missionInput) {
+                        missionInput.value = btn.textContent.trim();
+                        missionInput.focus();
+                    }
+                });
+            });
+
+            if (deployBtn) {
+                deployBtn.addEventListener('click', async () => {
+                    const goal = (missionInput?.value || '').trim();
+                    if (!goal) {
+                        if (missionStatus) {
+                            missionStatus.textContent = 'Enter a mission goal first.';
+                            missionStatus.className = 'text-xs text-amber-400';
+                        }
+                        missionInput?.focus();
+                        return;
+                    }
+                    deployBtn.disabled = true;
+                    if (deployLabel) deployLabel.textContent = 'Deploying…';
+                    if (missionStatus) {
+                        missionStatus.textContent = 'Dispatching mission to the agent…';
+                        missionStatus.className = 'text-xs text-accent-300';
+                    }
+                    try {
+                        const res = await fetch('/api/agent/run', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ user_goal: goal }),
+                        });
+                        const data = await res.json().catch(() => ({}));
+                        if (!res.ok || data.status === 'unavailable') {
+                            throw new Error(data.detail || 'Agent unavailable');
+                        }
+                        if (missionStatus) {
+                            missionStatus.textContent = 'Mission accepted — watch the Active Agent Stream.';
+                            missionStatus.className = 'text-xs text-emerald-400';
+                        }
+                    } catch (e) {
+                        console.error('Deploy agent failed', e);
+                        if (missionStatus) {
+                            missionStatus.textContent = 'Failed to dispatch mission. Is the agent running?';
+                            missionStatus.className = 'text-xs text-red-400';
+                        }
+                    } finally {
+                        setTimeout(() => {
+                            deployBtn.disabled = false;
+                            if (deployLabel) deployLabel.textContent = 'Deploy Agent';
+                        }, 1500);
+                    }
+                });
+            }
+        })();
+
+        // ── Hypothesis Log & Deployments slide-over panel ─────────────────────
+        (function () {
+            const overlay = document.getElementById('panel-overlay');
+            const title = document.getElementById('panel-title');
+            const body = document.getElementById('panel-body');
+
+            function openPanel() { overlay.classList.remove('hidden'); }
+            function closePanel() { overlay.classList.add('hidden'); }
+
+            function esc(s) {
+                return String(s == null ? '' : s)
+                    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+            }
+
+            function fmtP(p) {
+                if (p == null) return '—';
+                const n = Number(p);
+                return n < 0.0001 ? n.toExponential(2) : n.toFixed(5);
+            }
+
+            function sigBadge(ok) {
+                return ok
+                    ? '<span class="text-xs px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">SIGNIFICANT</span>'
+                    : '<span class="text-xs px-2 py-0.5 rounded bg-slate-500/10 text-slate-400 border border-slate-500/20">REJECTED</span>';
+            }
+
+            function modeBadge(mode) {
+                if (mode === 'live') return '<span class="text-xs px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-400 border border-blue-500/20">LIVE</span>';
+                return '<span class="text-xs px-1.5 py-0.5 rounded bg-slate-600/20 text-slate-400 border border-slate-600/30">SIM</span>';
+            }
+
+            function renderHypotheses(rows) {
+                if (!rows.length) {
+                    body.innerHTML = '<div class="text-slate-500 text-sm italic">No hypotheses recorded yet. The agent will populate this as it runs.</div>';
+                    return;
+                }
+                body.innerHTML = rows.map((h) => `
+                    <div class="glass-card p-4 border border-slate-700/50">
+                        <div class="flex items-center justify-between mb-2">
+                            <div class="flex items-center gap-2">${sigBadge(h.is_significant)} ${modeBadge(h.data_mode)}</div>
+                            <span class="text-xs text-slate-500 font-mono">${esc((h.created_at || '').slice(0, 19).replace('T', ' '))}</span>
+                        </div>
+                        <p class="text-sm text-slate-200 mb-3">${esc(h.statement)}</p>
+                        <div class="grid grid-cols-3 gap-2 text-xs">
+                            <div><div class="text-slate-500">p-value</div><div class="text-slate-200 font-mono">${fmtP(h.p_value)}</div></div>
+                            <div><div class="text-slate-500">&chi;&sup2;</div><div class="text-slate-200 font-mono">${h.statistic != null ? Number(h.statistic).toFixed(2) : '—'}</div></div>
+                            <div><div class="text-slate-500">n</div><div class="text-slate-200 font-mono">${h.sample_size != null ? Number(h.sample_size).toLocaleString() : '—'}</div></div>
+                        </div>
+                    </div>`).join('');
+            }
+
+            function renderDeployments(rows) {
+                if (!rows.length) {
+                    body.innerHTML = '<div class="text-slate-500 text-sm italic">No deployments yet. Significant hypotheses open a merge request here.</div>';
+                    return;
+                }
+                body.innerHTML = rows.map((d) => `
+                    <div class="glass-card p-4 border border-slate-700/50">
+                        <div class="flex items-center justify-between mb-2">
+                            <div class="flex items-center gap-2 text-orange-400"><i class="fa-brands fa-gitlab"></i> <span class="font-mono text-sm">!${esc(d.mr_iid)}</span> ${modeBadge(d.mode)}</div>
+                            <span class="text-xs text-slate-500 font-mono">${esc((d.created_at || '').slice(0, 19).replace('T', ' '))}</span>
+                        </div>
+                        <p class="text-sm text-slate-200 mb-2">${esc(d.title || d.hypothesis_statement)}</p>
+                        <div class="text-xs text-slate-500 mb-2 font-mono">${esc(d.branch || '')}</div>
+                        ${d.mr_url ? `<a href="${esc(d.mr_url)}" target="_blank" rel="noopener" class="text-xs text-brand-400 hover:text-brand-300 inline-flex items-center gap-1"><i class="fa-solid fa-code-merge"></i> View Merge Request</a>` : ''}
+                    </div>`).join('');
+            }
+
+            async function load(kind) {
+                openPanel();
+                body.innerHTML = '<div class="text-slate-500 text-sm italic">Loading…</div>';
+                try {
+                    if (kind === 'hypotheses') {
+                        title.innerHTML = '<i class="fa-solid fa-flask text-brand-400"></i> Hypothesis Log';
+                        const r = await fetch('/api/agent/hypotheses');
+                        const data = await r.json();
+                        renderHypotheses(data.hypotheses || []);
+                    } else {
+                        title.innerHTML = '<i class="fa-brands fa-gitlab text-orange-500"></i> Deployments';
+                        const r = await fetch('/api/agent/deployments');
+                        const data = await r.json();
+                        renderDeployments(data.deployments || []);
+                    }
+                } catch (e) {
+                    body.innerHTML = '<div class="text-red-400 text-sm">Failed to load data.</div>';
+                }
+            }
+
+            document.getElementById('nav-hypotheses').addEventListener('click', (e) => { e.preventDefault(); load('hypotheses'); });
+            document.getElementById('nav-deployments').addEventListener('click', (e) => { e.preventDefault(); load('deployments'); });
+            document.getElementById('panel-close').addEventListener('click', closePanel);
+            document.getElementById('panel-backdrop').addEventListener('click', closePanel);
+        })();
+
+        // ── Live product data: metrics, provider status, deployment, model ────
+        (function () {
+            const fmtInt = (n) => Number(n || 0).toLocaleString();
+            const fmtCompact = (n) => Intl.NumberFormat('en', { notation: 'compact', maximumFractionDigits: 1 }).format(Number(n || 0));
+
+            function setText(id, value) {
+                const el = document.getElementById(id);
+                if (el) el.textContent = value;
+            }
+
+            function timeAgo(iso) {
+                if (!iso) return 'never';
+                const then = new Date(iso).getTime();
+                if (Number.isNaN(then)) return 'never';
+                const secs = Math.max(0, Math.floor((Date.now() - then) / 1000));
+                if (secs < 60) return secs + 's ago';
+                if (secs < 3600) return Math.floor(secs / 60) + 'm ago';
+                if (secs < 86400) return Math.floor(secs / 3600) + 'h ago';
+                return Math.floor(secs / 86400) + 'd ago';
+            }
+
+            const DOT_COLORS = { live: 'bg-emerald-500 pulse-green', simulation: 'bg-amber-500' };
+
+            async function refreshMetrics() {
+                try {
+                    const r = await fetch('/api/agent/metrics');
+                    if (!r.ok) return;
+                    const m = await r.json();
+                    setText('stat-rows', fmtCompact(m.rows_analyzed));
+                    setText('stat-hypotheses', fmtInt(m.hypotheses_tested));
+                    setText('stat-discoveries', fmtInt(m.significant_discoveries));
+                    setText('stat-deployments', fmtInt(m.models_deployed));
+                    setText('last-insight', timeAgo(m.last_insight_at));
+                    const rate = Math.round((m.significance_rate || 0) * 100);
+                    setText('stat-rows-sub', m.live_cycles ? (m.live_cycles + ' live cycles') : 'across all cycles');
+                    const subEl = document.getElementById('stat-rows-sub');
+                    if (subEl && !m.live_cycles) subEl.textContent = rate + '% significant';
+                } catch (e) { /* server may be mid-cycle; ignore */ }
+            }
+
+            async function refreshStatus() {
+                try {
+                    const r = await fetch('/api/agent/status');
+                    if (!r.ok) return;
+                    const s = await r.json();
+                    const p = s.providers || {};
+                    [['dot-fivetran', p.fivetran], ['dot-elastic', p.elastic], ['dot-gemini', p.gemini], ['dot-gitlab', p.gitlab]].forEach(([id, mode]) => {
+                        const el = document.getElementById(id);
+                        if (!el) return;
+                        el.className = 'w-2 h-2 rounded-full ' + (DOT_COLORS[mode] || 'bg-slate-600');
+                        el.title = mode === 'live' ? 'Live' : 'Simulation';
+                    });
+                } catch (e) { /* ignore */ }
+            }
+
+            async function refreshDeployment() {
+                try {
+                    const r = await fetch('/api/agent/deployments?limit=1');
+                    if (!r.ok) return;
+                    const data = await r.json();
+                    const d = (data.deployments || [])[0];
+                    const link = document.getElementById('deploy-mr-link');
+                    if (!d) return;
+                    setText('deploy-branch', d.branch || '—');
+                    document.getElementById('deploy-subtitle').textContent =
+                        (d.mode === 'live' ? 'Merge Request opened on GitLab.' : 'Simulated Merge Request (enable AUTO_DEPLOY to ship for real).');
+                    if (link && d.mr_url) {
+                        link.href = d.mr_url;
+                        link.className = 'w-full bg-slate-800 hover:bg-slate-700 border border-slate-600 text-white py-2 rounded text-sm transition-colors flex items-center justify-center gap-2';
+                        setText('deploy-mr-label', 'View Merge Request !' + d.mr_iid);
+                    }
+                } catch (e) { /* ignore */ }
+            }
+
+            async function refreshModel() {
+                try {
+                    const r = await fetch('/api/agent/latest-model');
+                    if (!r.ok) return;
+                    const data = await r.json();
+                    if (!data.script) return;
+                    const block = document.getElementById('code-block');
+                    if (block) block.textContent = data.script;
+                    if (data.filename) {
+                        setText('code-filename', data.filename);
+                        setText('deploy-asset', data.filename);
+                    }
+                } catch (e) { /* ignore */ }
+            }
+
+            const copyBtn = document.getElementById('code-copy');
+            if (copyBtn) {
+                copyBtn.addEventListener('click', () => {
+                    const text = document.getElementById('code-block')?.textContent || '';
+                    navigator.clipboard?.writeText(text);
+                    copyBtn.className = 'fa-solid fa-check text-emerald-400';
+                    setTimeout(() => { copyBtn.className = 'fa-regular fa-copy text-slate-500 hover:text-white cursor-pointer'; }, 1200);
+                });
+            }
+
+            function refreshAll() {
+                refreshMetrics();
+                refreshStatus();
+                refreshDeployment();
+                refreshModel();
+            }
+            refreshAll();
+            setInterval(refreshAll, 5000);
+
+            // Instantly refresh when the agent ships a model (WebSocket trigger).
+            document.addEventListener('epiphany:cycle-updated', refreshAll);
+        })();
+
+        // ── Full-page hydration — builds the entire UI from the live backend ──
+        //    the instant the DOM is ready. Every visible number, label, chart
+        //    axis and table row is sourced from FastAPI (SQLite + Elastic);
+        //    nothing is hardcoded in the markup.
+        (function () {
+            const fmtInt = (n) => Number(n || 0).toLocaleString();
+            const fmtCompact = (n) => Intl.NumberFormat('en', { notation: 'compact', maximumFractionDigits: 1 }).format(Number(n || 0));
+
+            function setText(id, value) {
+                const el = document.getElementById(id);
+                if (el) el.textContent = value;
+            }
+
+            function esc(s) {
+                return String(s == null ? '' : s)
+                    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+            }
+
+            function fmtP(p) {
+                if (p == null) return '—';
+                const n = Number(p);
+                return n < 0.0001 ? n.toExponential(2) : n.toFixed(5);
+            }
+
+            function fmtWhen(iso) {
+                if (!iso) return '—';
+                return String(iso).slice(0, 19).replace('T', ' ');
+            }
+
+            // 1) Hero metric cards ← /api/agent/metrics
+            async function hydrateMetrics() {
+                const r = await fetch('/api/agent/metrics');
+                if (!r.ok) return;
+                const m = await r.json();
+                setText('stat-rows', fmtCompact(m.rows_analyzed));
+                setText('stat-hypotheses', fmtInt(m.hypotheses_tested));
+                setText('stat-discoveries', fmtInt(m.significant_discoveries));
+                setText('stat-deployments', fmtInt(m.models_deployed));
+                const rate = Math.round((m.significance_rate || 0) * 100);
+                setText('stat-rows-sub', m.live_cycles ? (m.live_cycles + ' live cycles') : (rate + '% significant'));
+            }
+
+            // 2) Discovery chart labels ← /api/agent/latest-insight
+            async function hydrateInsight() {
+                const r = await fetch('/api/agent/latest-insight');
+                if (!r.ok) return;
+                const data = await r.json();
+                setText('insight-title', data.title || 'Discovered Driver Analysis');
+                const subEl = document.getElementById('insight-subtitle');
+                if (subEl) {
+                    subEl.textContent = data.feature
+                        ? `${data.is_significant ? 'Validated' : 'Exploring'} driver · ${data.mode === 'live' ? 'live telemetry' : 'simulated'}`
+                        : "Awaiting the agent's first validated discovery…";
+                }
+                if (insightChart) {
+                    const pts = (data.points || []).map((p) => ({ x: p.x, y: p.y }));
+                    insightChart.data.datasets[0].data = pts;
+                    insightChart._xLabel = data.x_label || 'Driver';
+                    insightChart._yLabel = data.y_label || 'Outcome';
+                    insightChart.options.scales.x.title.text = data.x_label || 'Discovered Driver';
+                    insightChart.options.scales.y.title.text = data.y_label || 'Outcome Probability';
+                    insightChart.update('none');
+                }
+            }
+
+            // 3) Interventions table ← /api/agent/interventions
+            function actionBadge(row) {
+                if (row.mr_url || row.action === 'Model deployed') {
+                    const label = row.mr_iid ? `Deployed !${esc(row.mr_iid)}` : 'Model deployed';
+                    return row.mr_url
+                        ? `<a href="${esc(row.mr_url)}" target="_blank" rel="noopener" class="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded bg-accent-500/10 text-accent-300 border border-accent-500/20 hover:bg-accent-500/20"><i class="fa-brands fa-gitlab"></i> ${label}</a>`
+                        : `<span class="text-xs px-2 py-0.5 rounded bg-accent-500/10 text-accent-300 border border-accent-500/20">${label}</span>`;
+                }
+                if (row.is_significant) {
+                    return '<span class="text-xs px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">Validated</span>';
+                }
+                return '<span class="text-xs px-2 py-0.5 rounded bg-slate-500/10 text-slate-400 border border-slate-500/20">Rejected</span>';
+            }
+
+            async function hydrateInterventions() {
+                const tbody = document.getElementById('interventions-body');
+                if (!tbody) return;
+                const r = await fetch('/api/agent/interventions');
+                if (!r.ok) return;
+                const data = await r.json();
+                const rows = data.interventions || [];
+                if (!rows.length) {
+                    tbody.innerHTML =
+                        '<tr><td colspan="5" class="px-4 py-6 text-center text-slate-500 text-sm italic">No interventions yet — the agent will populate this as it runs.</td></tr>';
+                    return;
+                }
+                tbody.innerHTML = rows.map((row) => `
+                    <tr class="border-b border-slate-800/60 hover:bg-slate-800/30">
+                        <td class="px-4 py-3 text-slate-400 font-mono text-xs whitespace-nowrap">${esc(fmtWhen(row.created_at))}</td>
+                        <td class="px-4 py-3 text-slate-200">${esc(row.driver || '—')}</td>
+                        <td class="px-4 py-3 text-slate-300">${esc(row.outcome || '—')}</td>
+                        <td class="px-4 py-3 font-mono text-xs ${row.is_significant ? 'text-emerald-400' : 'text-slate-400'}">${fmtP(row.p_value)}</td>
+                        <td class="px-4 py-3">${actionBadge(row)}</td>
+                    </tr>`).join('');
+            }
+
+            async function hydrateDashboard() {
+                await Promise.allSettled([
+                    hydrateMetrics(),
+                    hydrateInsight(),
+                    hydrateInterventions(),
+                ]);
+            }
+
+            document.addEventListener('DOMContentLoaded', hydrateDashboard);
+            // Re-hydrate instantly whenever the agent completes a deployment.
+            document.addEventListener('epiphany:cycle-updated', hydrateDashboard);
+        })();
+    </script>
+</body>
+</html>

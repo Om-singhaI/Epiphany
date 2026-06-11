@@ -1,0 +1,341 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Epiphany | Autonomous Data Scientist</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+        body { font-family: 'Inter', sans-serif; background-color: #0f172a; color: #f8fafc; overflow-x: hidden; }
+        .font-mono { font-family: 'JetBrains Mono', monospace; }
+        .glass-card { background: rgba(30, 41, 59, 0.7); backdrop-filter: blur(12px); border: 1px solid rgba(148, 163, 184, 0.1); border-radius: 12px; }
+        .sidebar { background: #0b1120; border-right: 1px solid rgba(148, 163, 184, 0.1); }
+        
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: #0f172a; }
+        ::-webkit-scrollbar-thumb { background: #334155; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #475569; }
+
+        .pulse-green { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7); animation: pulse-g 2s infinite; }
+        @keyframes pulse-g {
+            0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7); }
+            70% { transform: scale(1); box-shadow: 0 0 0 6px rgba(16, 185, 129, 0); }
+            100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
+        }
+        
+        .agent-log {
+            background: #020617;
+            border-left: 3px solid #3b82f6;
+        }
+    </style>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: { 400: '#38bdf8', 500: '#0ea5e9', 600: '#0284c7' },
+                        accent: { 400: '#a78bfa', 500: '#8b5cf6', 600: '#7c3aed' }
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="flex h-screen antialiased selection:bg-brand-500 selection:text-white">
+
+    <!-- Sidebar -->
+    <aside class="w-64 sidebar flex flex-col hidden md:flex z-20">
+        <div class="h-16 flex items-center px-6 border-b border-slate-800">
+            <div class="flex items-center gap-3 text-xl font-bold tracking-tight">
+                <i class="fa-solid fa-atom text-brand-400"></i>
+                <span class="bg-clip-text text-transparent bg-gradient-to-r from-white to-slate-400">Epiphany</span>
+            </div>
+        </div>
+        
+        <div class="p-4 flex-1">
+            <div class="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-4 mt-2">Platform</div>
+            <nav class="space-y-1">
+                <a href="#" class="flex items-center gap-3 px-3 py-2 bg-brand-500/10 text-brand-400 rounded-lg border border-brand-500/20 transition-colors">
+                    <i class="fa-solid fa-chart-line w-5"></i>
+                    <span class="font-medium">Live Dashboard</span>
+                </a>
+                <a href="#" class="flex items-center gap-3 px-3 py-2 text-slate-400 hover:text-slate-100 hover:bg-slate-800 rounded-lg transition-colors">
+                    <i class="fa-solid fa-flask w-5"></i>
+                    <span class="font-medium">Hypothesis Log</span>
+                </a>
+                <a href="#" class="flex items-center gap-3 px-3 py-2 text-slate-400 hover:text-slate-100 hover:bg-slate-800 rounded-lg transition-colors">
+                    <i class="fa-brands fa-gitlab w-5"></i>
+                    <span class="font-medium">Deployments</span>
+                </a>
+            </nav>
+
+            <div class="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-4 mt-8">MCP Integrations</div>
+            <nav class="space-y-2">
+                <div class="flex items-center justify-between px-3 py-2 rounded-lg bg-slate-800/50">
+                    <div class="flex items-center gap-2"><i class="fa-solid fa-database text-blue-400 text-sm"></i> <span class="text-sm font-medium">Fivetran Sync</span></div>
+                    <div class="w-2 h-2 rounded-full bg-emerald-500 pulse-green"></div>
+                </div>
+                <div class="flex items-center justify-between px-3 py-2 rounded-lg bg-slate-800/50">
+                    <div class="flex items-center gap-2"><i class="fa-solid fa-magnifying-glass text-yellow-400 text-sm"></i> <span class="text-sm font-medium">Elastic Search</span></div>
+                    <div class="w-2 h-2 rounded-full bg-emerald-500 pulse-green"></div>
+                </div>
+                <div class="flex items-center justify-between px-3 py-2 rounded-lg bg-slate-800/50">
+                    <div class="flex items-center gap-2"><i class="fa-brands fa-gitlab text-orange-500 text-sm"></i> <span class="text-sm font-medium">GitLab CI/CD</span></div>
+                    <div class="w-2 h-2 rounded-full bg-emerald-500 pulse-green"></div>
+                </div>
+            </nav>
+        </div>
+        
+        <div class="p-4 border-t border-slate-800">
+            <div class="flex items-center gap-3">
+                <div class="w-8 h-8 rounded-full bg-gradient-to-tr from-brand-500 to-accent-500 flex items-center justify-center">
+                    <i class="fa-solid fa-robot text-xs text-white"></i>
+                </div>
+                <div>
+                    <div class="text-sm font-medium text-white">Gemini 3 Core</div>
+                    <div class="text-xs text-emerald-400">Agent Active</div>
+                </div>
+            </div>
+        </div>
+    </aside>
+
+    <!-- Main Content -->
+    <main class="flex-1 flex flex-col h-screen overflow-y-auto relative">
+        <!-- Top Header -->
+        <header class="h-16 flex items-center justify-between px-8 border-b border-slate-800/50 bg-slate-900/80 backdrop-blur-md sticky top-0 z-10">
+            <h1 class="text-lg font-semibold text-slate-200">SaaS Telemetry & Churn Analysis</h1>
+            <div class="flex items-center gap-4">
+                <div class="bg-slate-800 text-slate-300 text-xs px-3 py-1.5 rounded-md font-mono border border-slate-700">
+                    <i class="fa-solid fa-bolt text-yellow-400 mr-2"></i>Last Insight: 2 mins ago
+                </div>
+                <button class="bg-brand-600 hover:bg-brand-500 text-white px-4 py-1.5 rounded-md text-sm font-medium transition-colors shadow-lg shadow-brand-500/20">
+                    Force Sync
+                </button>
+            </div>
+        </header>
+
+        <div class="p-8 max-w-7xl mx-auto w-full space-y-6">
+            
+            <!-- Hero Stats Row -->
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+                <div class="glass-card p-5">
+                    <div class="text-slate-400 text-sm font-medium mb-1">Rows Analyzed</div>
+                    <div class="text-2xl font-bold text-white mb-2">124.5M</div>
+                    <div class="text-xs text-emerald-400 flex items-center gap-1"><i class="fa-solid fa-arrow-trend-up"></i> +1.2M today (Fivetran)</div>
+                </div>
+                <div class="glass-card p-5">
+                    <div class="text-slate-400 text-sm font-medium mb-1">Hypotheses Tested</div>
+                    <div class="text-2xl font-bold text-white mb-2">842</div>
+                    <div class="text-xs text-slate-500">Autonomous Sandbox</div>
+                </div>
+                <div class="glass-card p-5 border border-brand-500/30 relative overflow-hidden">
+                    <div class="absolute right-0 top-0 w-24 h-24 bg-brand-500/10 rounded-full blur-2xl -mr-8 -mt-8"></div>
+                    <div class="text-brand-300 text-sm font-medium mb-1">Significant Discoveries</div>
+                    <div class="text-2xl font-bold text-white mb-2 text-shadow">14</div>
+                    <div class="text-xs text-brand-400 flex items-center gap-1"><i class="fa-solid fa-check-circle"></i> p < 0.05</div>
+                </div>
+                <div class="glass-card p-5 border border-accent-500/30 relative overflow-hidden">
+                    <div class="absolute right-0 top-0 w-24 h-24 bg-accent-500/10 rounded-full blur-2xl -mr-8 -mt-8"></div>
+                    <div class="text-accent-300 text-sm font-medium mb-1">Models Deployed</div>
+                    <div class="text-2xl font-bold text-white mb-2 text-shadow">3</div>
+                    <div class="text-xs text-accent-400 flex items-center gap-1"><i class="fa-brands fa-gitlab"></i> Pushed to Production</div>
+                </div>
+            </div>
+
+            <!-- Active Discovery Section -->
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                
+                <!-- Left Column: Agent Feed & Code -->
+                <div class="lg:col-span-2 space-y-6">
+                    <div class="glass-card flex flex-col h-[500px]">
+                        <div class="border-b border-slate-700/50 p-4 flex justify-between items-center bg-slate-800/30 rounded-t-xl">
+                            <h2 class="font-semibold text-slate-200 flex items-center gap-2">
+                                <i class="fa-solid fa-satellite-dish text-brand-400"></i> Active Agent Stream
+                            </h2>
+                            <span class="text-xs font-mono bg-emerald-500/10 text-emerald-400 px-2 py-1 rounded border border-emerald-500/20">STATUS: REASONING</span>
+                        </div>
+                        
+                        <!-- Terminal Feed -->
+                        <div class="flex-1 overflow-y-auto p-4 space-y-4 font-mono text-sm">
+                            <div class="agent-log p-3 rounded text-slate-300">
+                                <div class="text-blue-400 text-xs mb-1">[08:42:15] SYSTEM <i class="fa-solid fa-arrow-right mx-1"></i> FIVETRAN MCP</div>
+                                Detected new telemetry sync table `prod_db.api_logs_daily`. Ingesting schema...
+                            </div>
+                            
+                            <div class="agent-log p-3 rounded text-slate-300 border-l-yellow-500">
+                                <div class="text-yellow-400 text-xs mb-1">[08:42:18] AGENT <i class="fa-solid fa-arrow-right mx-1"></i> ELASTIC MCP</div>
+                                Executing exploratory aggregation on `latency_ms` grouped by `user_status`. Anomaly detected: Churned users exhibit +120ms average latency during trial phase.
+                            </div>
+
+                            <div class="agent-log p-3 rounded text-white border-l-accent-500 bg-accent-900/10">
+                                <div class="text-accent-400 text-xs mb-1">[08:42:25] GEMINI 3 <i class="fa-solid fa-lightbulb mx-1"></i> HYPOTHESIS GENERATION</div>
+                                <strong>Hypothesis:</strong> Users who experience average API latency > 450ms during their first 14 days have a statistically significant higher rate of churn within month one.
+                            </div>
+
+                            <div class="agent-log p-3 rounded text-slate-300 border-l-emerald-500 bg-emerald-900/10">
+                                <div class="text-emerald-400 text-xs mb-1 flex justify-between">
+                                    <span>[08:42:29] SANDBOX <i class="fa-solid fa-microchip mx-1"></i> PYTHON EXECUTION</span>
+                                    <span>SUCCESS</span>
+                                </div>
+                                Executed Chi-Square test on 50,000 randomized user rows. <br>
+                                <span class="text-emerald-300 font-bold mt-2 inline-block">Result: χ² = 14.2, p = 0.00016</span><br>
+                                Statistical significance verified. Proceeding to model generation.
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Right Column: Visualization & Deployment -->
+                <div class="space-y-6">
+                    <div class="glass-card p-5 h-[240px] flex flex-col">
+                        <div class="flex justify-between items-start mb-4">
+                            <h3 class="font-medium text-slate-200">Latency vs Churn Probability</h3>
+                            <i class="fa-solid fa-chart-scatter text-slate-500"></i>
+                        </div>
+                        <div class="flex-1 w-full relative">
+                            <canvas id="churnChart"></canvas>
+                        </div>
+                    </div>
+
+                    <div class="glass-card p-0 overflow-hidden border-brand-500/30 shadow-[0_0_20px_rgba(2,132,199,0.1)]">
+                        <div class="bg-brand-900/20 p-4 border-b border-slate-700/50">
+                            <div class="flex items-center gap-2 mb-1">
+                                <i class="fa-brands fa-gitlab text-orange-500 text-lg"></i>
+                                <h3 class="font-semibold text-white">Autonomous Deployment</h3>
+                            </div>
+                            <p class="text-xs text-slate-400">Agent is opening a new Merge Request.</p>
+                        </div>
+                        <div class="p-4 bg-slate-900">
+                            <div class="mb-3">
+                                <div class="text-xs text-slate-500 mb-1">Target Branch</div>
+                                <div class="text-sm text-brand-300 font-mono bg-slate-800 px-2 py-1 rounded inline-block">feat/autonomous-churn-prediction</div>
+                            </div>
+                            <div class="mb-4">
+                                <div class="text-xs text-slate-500 mb-1">Generated Asset</div>
+                                <div class="flex items-center gap-2 text-sm text-slate-300">
+                                    <i class="fa-brands fa-python text-yellow-400"></i> `xgboost_latency_classifier.py`
+                                </div>
+                            </div>
+                            <button class="w-full bg-slate-800 hover:bg-slate-700 border border-slate-600 text-white py-2 rounded text-sm transition-colors flex items-center justify-center gap-2">
+                                <i class="fa-solid fa-code-merge text-slate-400"></i> View Merge Request
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Code View Section -->
+            <div class="glass-card rounded-xl overflow-hidden mt-6">
+                <div class="flex items-center justify-between bg-[#1e293b] px-4 py-2 border-b border-slate-700">
+                    <div class="flex gap-2">
+                        <div class="w-3 h-3 rounded-full bg-red-500"></div>
+                        <div class="w-3 h-3 rounded-full bg-yellow-500"></div>
+                        <div class="w-3 h-3 rounded-full bg-green-500"></div>
+                    </div>
+                    <div class="text-xs font-mono text-slate-400">Generated Python Code (xgboost_latency_classifier.py)</div>
+                    <div><i class="fa-regular fa-copy text-slate-500 hover:text-white cursor-pointer"></i></div>
+                </div>
+                <div class="p-4 bg-[#0d1117] overflow-x-auto">
+<pre class="font-mono text-sm text-slate-300 leading-relaxed">
+<span class="text-pink-400">import</span> pandas <span class="text-pink-400">as</span> pd
+<span class="text-pink-400">import</span> xgboost <span class="text-pink-400">as</span> xgb
+<span class="text-pink-400">from</span> sklearn.model_selection <span class="text-pink-400">import</span> train_test_split
+<span class="text-pink-400">from</span> sklearn.metrics <span class="text-pink-400">import</span> roc_auc_score
+
+<span class="text-slate-500"># Autonomous script generated by Epiphany Agent</span>
+<span class="text-slate-500"># Validated Hypothesis: API Latency > 450ms correlates to early churn (p=0.00016)</span>
+
+<span class="text-pink-400">def</span> <span class="text-blue-300">train_latency_churn_model</span>(telemetry_df):
+    <span class="text-slate-500"># Feature Engineering based on agent discovery</span>
+    features = [<span class="text-green-300">'avg_latency_ms'</span>, <span class="text-green-300">'api_calls_count'</span>, <span class="text-green-300">'onboarding_step'</span>]
+    X = telemetry_df[features]
+    y = telemetry_df[<span class="text-green-300">'churn_30_days'</span>]
+    
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=<span class="text-orange-300">0.2</span>, random_state=<span class="text-orange-300">42</span>)
+    
+    model = xgb.XGBClassifier(
+        n_estimators=<span class="text-orange-300">100</span>, 
+        learning_rate=<span class="text-orange-300">0.1</span>, 
+        max_depth=<span class="text-orange-300">4</span>
+    )
+    
+    model.fit(X_train, y_train)
+    preds = model.predict_proba(X_test)[:, <span class="text-orange-300">1</span>]
+    
+    <span class="text-pink-400">print</span>(<span class="text-green-300">f"Model AUC-ROC: {</span>roc_auc_score(y_test, preds)<span class="text-green-300">}"</span>)
+    <span class="text-pink-400">return</span> model
+</pre>
+                </div>
+            </div>
+
+        </div>
+    </main>
+
+    <script>
+        // Chart.js Visualization for the Dashboard
+        document.addEventListener('DOMContentLoaded', function() {
+            const ctx = document.getElementById('churnChart').getContext('2d');
+            
+            // Generate some realistic-looking synthetic data for the scatter plot
+            const generateData = (baseX, baseY, count, variance) => {
+                let data = [];
+                for(let i=0; i<count; i++) {
+                    data.push({
+                        x: baseX + (Math.random() * variance * 2 - variance),
+                        y: baseY + (Math.random() * 0.15 * 2 - 0.15)
+                    });
+                }
+                return data;
+            };
+
+            const lowLatencyUsers = generateData(200, 0.15, 40, 100);  // Low latency, low churn
+            const highLatencyUsers = generateData(600, 0.75, 30, 150); // High latency, high churn
+
+            new Chart(ctx, {
+                type: 'scatter',
+                data: {
+                    datasets: [{
+                        label: 'Retained Users',
+                        data: lowLatencyUsers,
+                        backgroundColor: 'rgba(56, 189, 248, 0.6)',
+                        borderColor: 'rgba(56, 189, 248, 1)',
+                        pointRadius: 4
+                    }, {
+                        label: 'Churned Users',
+                        data: highLatencyUsers,
+                        backgroundColor: 'rgba(244, 63, 94, 0.6)',
+                        borderColor: 'rgba(244, 63, 94, 1)',
+                        pointRadius: 4
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: { theme: 'dark' }
+                    },
+                    scales: {
+                        x: {
+                            title: { display: true, text: 'Avg API Latency (ms)', color: '#94a3b8', font: {size: 11} },
+                            grid: { color: 'rgba(148, 163, 184, 0.1)' },
+                            ticks: { color: '#64748b' }
+                        },
+                        y: {
+                            title: { display: true, text: 'Churn Probability', color: '#94a3b8', font: {size: 11} },
+                            grid: { color: 'rgba(148, 163, 184, 0.1)' },
+                            ticks: { color: '#64748b' },
+                            min: 0,
+                            max: 1
+                        }
+                    }
+                }
+            });
+        });
+    </script>
+</body>
+</html>

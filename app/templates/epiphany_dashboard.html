@@ -1,0 +1,1510 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Epiphany — Autonomous Data Scientist</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/styles/github-dark.min.css">
+    <script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/highlight.min.js"></script>
+    <!-- Clerk publishable key (safe to expose; empty => local demo login). -->
+    <script>window.__CLERK_PK__ = "{{ clerk_publishable_key }}";</script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap');
+
+        :root {
+            --bg: #0b0f19;
+            --panel: rgba(255, 255, 255, 0.025);
+            --panel-border: rgba(148, 163, 184, 0.12);
+            --emerald: #10b981;
+            --indigo: #6366f1;
+        }
+        * { -webkit-font-smoothing: antialiased; }
+        body { font-family: 'Inter', sans-serif; background-color: var(--bg); color: #f8fafc; overflow-x: hidden; }
+        .font-mono { font-family: 'JetBrains Mono', monospace; }
+
+        /* Ambient backdrop glows */
+        body::before {
+            content: ''; position: fixed; inset: 0; z-index: 0; pointer-events: none;
+            background:
+                radial-gradient(900px circle at 12% -10%, rgba(99, 102, 241, 0.16), transparent 45%),
+                radial-gradient(800px circle at 90% 5%, rgba(16, 185, 129, 0.12), transparent 45%);
+        }
+
+        .glass { background: var(--panel); backdrop-filter: blur(16px); border: 1px solid var(--panel-border); border-radius: 16px; }
+        .glass-strong { background: rgba(17, 24, 39, 0.72); backdrop-filter: blur(20px); border: 1px solid var(--panel-border); }
+        .sidebar { background: rgba(8, 11, 19, 0.85); border-right: 1px solid var(--panel-border); }
+
+        /* Micro-interactions */
+        .lift { transition: transform .25s cubic-bezier(.2,.8,.2,1), box-shadow .25s, border-color .25s; }
+        .lift:hover { transform: translateY(-2px); border-color: rgba(99,102,241,.4); box-shadow: 0 12px 40px -12px rgba(99,102,241,.35); }
+        .btn { transition: transform .15s ease, background-color .2s ease, box-shadow .2s ease, opacity .2s; }
+        .btn:active { transform: scale(.97); }
+        .btn-primary { background: linear-gradient(135deg, var(--indigo), #4f46e5); box-shadow: 0 8px 24px -8px rgba(99,102,241,.6); }
+        .btn-primary:hover { box-shadow: 0 10px 30px -8px rgba(99,102,241,.85); }
+        .btn-emerald { background: linear-gradient(135deg, var(--emerald), #059669); box-shadow: 0 8px 24px -8px rgba(16,185,129,.6); }
+
+        /* Skeleton shimmer */
+        .skeleton { position: relative; overflow: hidden; background: rgba(148,163,184,.08); border-radius: 8px; color: transparent !important; }
+        .skeleton::after {
+            content: ''; position: absolute; inset: 0;
+            background: linear-gradient(90deg, transparent, rgba(148,163,184,.18), transparent);
+            transform: translateX(-100%); animation: shimmer 1.5s infinite;
+        }
+        @keyframes shimmer { 100% { transform: translateX(100%); } }
+
+        /* View transitions (SPA) */
+        .view { animation: viewIn .45s cubic-bezier(.2,.8,.2,1); }
+        @keyframes viewIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+        .fade-out { opacity: 0 !important; transform: scale(.98); transition: opacity .5s ease, transform .5s ease; }
+
+        /* Auth */
+        .auth-bg { background:
+            radial-gradient(1000px circle at 20% 20%, rgba(99,102,241,.18), transparent 40%),
+            radial-gradient(900px circle at 80% 70%, rgba(16,185,129,.14), transparent 42%); }
+        .field { transition: border-color .2s, box-shadow .2s, background-color .2s; }
+        .field:focus { border-color: var(--indigo); box-shadow: 0 0 0 3px rgba(99,102,241,.18); }
+
+        /* Status dot pulse */
+        .pulse-live { animation: pulseLive 2s infinite; }
+        @keyframes pulseLive {
+            0% { box-shadow: 0 0 0 0 rgba(16,185,129,.6); }
+            70% { box-shadow: 0 0 0 6px rgba(16,185,129,0); }
+            100% { box-shadow: 0 0 0 0 rgba(16,185,129,0); }
+        }
+
+        /* Terminal */
+        .agent-log { background: rgba(2, 6, 23, .6); border-left: 3px solid var(--indigo); }
+        .type-cursor::after { content: '\2588'; margin-left: 2px; color: var(--emerald); animation: blink 1s steps(2, start) infinite; }
+        @keyframes blink { to { visibility: hidden; } }
+
+        /* Toggle switch (auth) */
+        .seg { background: rgba(148,163,184,.08); border: 1px solid var(--panel-border); border-radius: 10px; }
+        .seg-pill { transition: transform .28s cubic-bezier(.2,.8,.2,1); }
+
+        ::-webkit-scrollbar { width: 7px; height: 7px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #334155; border-radius: 6px; }
+        ::-webkit-scrollbar-thumb:hover { background: #475569; }
+        [data-lucide] { width: 1em; height: 1em; }
+    </style>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        base: '#0b0f19',
+                        emerald: { 400: '#34d399', 500: '#10b981', 600: '#059669' },
+                        indigo: { 300: '#a5b4fc', 400: '#818cf8', 500: '#6366f1', 600: '#4f46e5' }
+                    },
+                    fontFamily: { mono: ['JetBrains Mono', 'monospace'] }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="min-h-screen relative">
+
+    <!-- ════════════════════════════════════════════════════════════════════ -->
+    <!-- LANDING / INFO PAGE (shown first)                                     -->
+    <!-- ════════════════════════════════════════════════════════════════════ -->
+    <div id="landing" class="relative z-10 min-h-screen flex flex-col">
+        <!-- Nav -->
+        <nav class="h-16 flex items-center justify-between px-6 md:px-10 border-b border-white/5">
+            <div class="flex items-center gap-3 text-lg font-extrabold tracking-tight">
+                <div class="w-9 h-9 rounded-xl btn-primary flex items-center justify-center"><i data-lucide="atom" class="text-white text-sm"></i></div>
+                <span class="bg-clip-text text-transparent bg-gradient-to-r from-white to-slate-400">Epiphany</span>
+            </div>
+            <div class="flex items-center gap-2">
+                <button id="landing-login" class="btn text-sm font-medium text-slate-300 hover:text-white px-4 py-2 rounded-lg">Login</button>
+                <button id="landing-start" class="btn btn-primary text-white text-sm font-semibold px-4 py-2 rounded-lg flex items-center gap-2">Get Started <i data-lucide="arrow-right" class="text-xs"></i></button>
+            </div>
+        </nav>
+
+        <!-- Hero -->
+        <header class="flex-1 flex items-center">
+            <div class="max-w-5xl mx-auto px-6 md:px-10 py-16 text-center">
+                <div class="inline-flex items-center gap-2 text-xs font-medium text-indigo-300 bg-indigo-500/10 border border-indigo-500/20 rounded-full px-3 py-1 mb-6">
+                    <i data-lucide="sparkles" class="text-xs"></i> Autonomous AI Data Scientist
+                </div>
+                <h1 class="text-4xl md:text-6xl font-extrabold tracking-tight leading-[1.05] mb-5">
+                    Your data scientist that <span class="bg-clip-text text-transparent bg-gradient-to-r from-emerald-400 via-indigo-400 to-indigo-500">never sleeps</span>.
+                </h1>
+                <p class="text-base md:text-lg text-slate-400 max-w-2xl mx-auto mb-8">
+                    Point Epiphany at your data. It explores it, forms a falsifiable hypothesis, proves it with the right
+                    statistical test, trains a real model, and ships it — autonomously, in the background.
+                </p>
+                <div class="flex items-center justify-center gap-3">
+                    <button id="landing-start-2" class="btn btn-primary text-white font-semibold px-6 py-3 rounded-xl flex items-center gap-2">Get Started Free <i data-lucide="arrow-right" class="text-sm"></i></button>
+                    <a href="#how" class="btn text-slate-300 hover:text-white font-medium px-6 py-3 rounded-xl border border-white/10 hover:border-white/20">See how it works</a>
+                </div>
+                <p class="text-xs text-slate-600 mt-5">No credit card. Bring your own CSV — or connect Elastic, Fivetran, Gemini & GitLab.</p>
+            </div>
+        </header>
+
+        <!-- 5-step loop -->
+        <section id="how" class="max-w-6xl mx-auto px-6 md:px-10 pb-16 w-full">
+            <div class="text-center mb-8">
+                <h2 class="text-2xl font-bold text-white">The 5-step autonomous loop</h2>
+                <p class="text-sm text-slate-500 mt-1">A continuous cycle modelled on how a real data scientist works.</p>
+            </div>
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+                <div class="glass p-5 lift">
+                    <div class="w-10 h-10 rounded-xl bg-indigo-500/15 flex items-center justify-center mb-3"><i data-lucide="database" class="text-indigo-300"></i></div>
+                    <div class="text-[11px] font-mono text-slate-500 mb-1">01 · Fivetran</div>
+                    <div class="font-semibold text-white mb-1">Trigger</div>
+                    <p class="text-xs text-slate-400">Wakes when fresh data syncs.</p>
+                </div>
+                <div class="glass p-5 lift">
+                    <div class="w-10 h-10 rounded-xl bg-amber-500/15 flex items-center justify-center mb-3"><i data-lucide="search" class="text-amber-300"></i></div>
+                    <div class="text-[11px] font-mono text-slate-500 mb-1">02 · Elastic</div>
+                    <div class="font-semibold text-white mb-1">Explore</div>
+                    <p class="text-xs text-slate-400">Discovers schema & real signals.</p>
+                </div>
+                <div class="glass p-5 lift">
+                    <div class="w-10 h-10 rounded-xl bg-violet-500/15 flex items-center justify-center mb-3"><i data-lucide="sparkles" class="text-violet-300"></i></div>
+                    <div class="text-[11px] font-mono text-slate-500 mb-1">03 · Gemini</div>
+                    <div class="font-semibold text-white mb-1">Reason</div>
+                    <p class="text-xs text-slate-400">Forms a falsifiable hypothesis.</p>
+                </div>
+                <div class="glass p-5 lift">
+                    <div class="w-10 h-10 rounded-xl bg-emerald-500/15 flex items-center justify-center mb-3"><i data-lucide="flask-conical" class="text-emerald-300"></i></div>
+                    <div class="text-[11px] font-mono text-slate-500 mb-1">04 · Sandbox</div>
+                    <div class="font-semibold text-white mb-1">Validate</div>
+                    <p class="text-xs text-slate-400">Runs the right test (p&lt;0.05).</p>
+                </div>
+                <div class="glass p-5 lift">
+                    <div class="w-10 h-10 rounded-xl bg-orange-500/15 flex items-center justify-center mb-3"><i data-lucide="git-merge" class="text-orange-300"></i></div>
+                    <div class="text-[11px] font-mono text-slate-500 mb-1">05 · GitLab</div>
+                    <div class="font-semibold text-white mb-1">Deploy</div>
+                    <p class="text-xs text-slate-400">Trains a model & opens an MR.</p>
+                </div>
+            </div>
+
+            <!-- Value props -->
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mt-10">
+                <div class="glass p-6 lift">
+                    <i data-lucide="bar-chart-3" class="text-emerald-400 text-xl mb-3"></i>
+                    <h3 class="font-semibold text-white mb-1">Adaptive statistics</h3>
+                    <p class="text-sm text-slate-400">Chi-square, t-test, ANOVA or correlation — chosen automatically from your columns and run on real rows.</p>
+                </div>
+                <div class="glass p-6 lift">
+                    <i data-lucide="cpu" class="text-indigo-400 text-xl mb-3"></i>
+                    <h3 class="font-semibold text-white mb-1">Real trained models</h3>
+                    <p class="text-sm text-slate-400">A scikit-learn model is trained and scored on held-out data, then saved as a loadable artifact.</p>
+                </div>
+                <div class="glass p-6 lift">
+                    <i data-lucide="shield-check" class="text-violet-400 text-xl mb-3"></i>
+                    <h3 class="font-semibold text-white mb-1">Sandboxed & safe</h3>
+                    <p class="text-sm text-slate-400">Generated code is AST-screened and executed in a network-isolated, resource-limited sandbox.</p>
+                </div>
+            </div>
+
+            <div class="text-center mt-12">
+                <button id="landing-start-3" class="btn btn-emerald text-white font-semibold px-7 py-3 rounded-xl inline-flex items-center gap-2">Launch your workspace <i data-lucide="arrow-right" class="text-sm"></i></button>
+            </div>
+        </section>
+
+        <footer class="border-t border-white/5 py-6 text-center text-xs text-slate-600">
+            Epiphany — built for the Google Cloud Rapid Agent Hackathon.
+        </footer>
+    </div>
+
+    <!-- ════════════════════════════════════════════════════════════════════ -->
+    <!-- TASK A — Authentication Gate (revealed from the landing page)         -->
+    <!-- ════════════════════════════════════════════════════════════════════ -->
+    <div id="auth-container" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4 auth-bg">
+        <div class="w-full max-w-md">
+            <button id="auth-back" class="btn text-slate-400 hover:text-white text-sm flex items-center gap-1.5 mb-4 mx-auto">
+                <i data-lucide="arrow-left" class="text-xs"></i> Back to home
+            </button>
+            <div class="flex items-center justify-center gap-3 mb-8">
+                <div class="w-11 h-11 rounded-2xl btn-primary flex items-center justify-center">
+                    <i data-lucide="atom" class="text-white text-xl"></i>
+                </div>
+                <span class="text-2xl font-extrabold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-white to-slate-400">Epiphany</span>
+            </div>
+
+            <div class="glass-strong rounded-3xl p-8 shadow-2xl border border-white/10">
+                <h1 id="auth-title" class="text-2xl font-bold text-white mb-1">Create your workspace</h1>
+                <p id="auth-subtitle" class="text-sm text-slate-400 mb-6">Start your autonomous data scientist in seconds.</p>
+
+                <!-- Mode toggle -->
+                <div id="auth-seg" class="seg relative grid grid-cols-2 p-1 mb-6 text-sm font-medium">
+                    <div id="seg-pill" class="seg-pill absolute top-1 left-1 h-[calc(100%-8px)] w-[calc(50%-4px)] rounded-lg btn-primary"></div>
+                    <button id="tab-signup" type="button" class="relative z-10 py-2 rounded-lg text-white">Sign Up</button>
+                    <button id="tab-login" type="button" class="relative z-10 py-2 rounded-lg text-slate-400">Login</button>
+                </div>
+
+                <form id="auth-form" class="space-y-4" novalidate>
+                    <div id="auth-cred-fields" class="space-y-4">
+                    <div id="auth-name-wrap">
+                        <label class="block text-xs font-medium text-slate-400 mb-1.5">Full Name</label>
+                        <div class="relative">
+                            <i data-lucide="user" class="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 text-sm"></i>
+                            <input id="auth-name" type="text" autocomplete="name"
+                                class="field w-full bg-slate-900/60 border border-slate-700 rounded-xl pl-10 pr-3 py-2.5 text-sm text-white placeholder-slate-500 outline-none"
+                                placeholder="Ada Lovelace">
+                        </div>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-slate-400 mb-1.5">Corporate Email</label>
+                        <div class="relative">
+                            <i data-lucide="mail" class="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 text-sm"></i>
+                            <input id="auth-email" type="email" autocomplete="email"
+                                class="field w-full bg-slate-900/60 border border-slate-700 rounded-xl pl-10 pr-3 py-2.5 text-sm text-white placeholder-slate-500 outline-none"
+                                placeholder="you@company.com">
+                        </div>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-slate-400 mb-1.5">Password</label>
+                        <div class="relative">
+                            <i data-lucide="lock" class="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 text-sm"></i>
+                            <input id="auth-password" type="password" autocomplete="current-password"
+                                class="field w-full bg-slate-900/60 border border-slate-700 rounded-xl pl-10 pr-10 py-2.5 text-sm text-white placeholder-slate-500 outline-none"
+                                placeholder="••••••••">
+                            <button type="button" id="auth-eye" class="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300">
+                                <i data-lucide="eye" class="text-sm"></i>
+                            </button>
+                        </div>
+                    </div>
+                    </div><!-- /auth-cred-fields -->
+
+                    <div id="auth-otp-wrap" class="hidden">
+                        <label class="block text-xs font-medium text-slate-400 mb-1.5">Verification code</label>
+                        <div class="relative">
+                            <i data-lucide="shield-check" class="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 text-sm"></i>
+                            <input id="auth-otp" inputmode="numeric" autocomplete="one-time-code"
+                                class="field w-full bg-slate-900/60 border border-slate-700 rounded-xl pl-10 pr-3 py-2.5 text-sm text-white placeholder-slate-500 outline-none tracking-widest"
+                                placeholder="6-digit code">
+                        </div>
+                        <p class="text-[11px] text-slate-500 mt-1.5">Enter the code we emailed to <span id="auth-otp-email" class="text-slate-300"></span>.</p>
+                    </div>
+
+                    <div id="auth-error" class="hidden text-xs text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2 flex items-center gap-2">
+                        <i data-lucide="alert-circle" class="text-sm"></i><span id="auth-error-text"></span>
+                    </div>
+
+                    <button id="auth-submit" type="submit"
+                        class="btn btn-primary w-full text-white font-semibold py-3 rounded-xl flex items-center justify-center gap-2">
+                        <span id="auth-submit-label">Get Started</span>
+                        <i data-lucide="arrow-right" class="text-sm"></i>
+                    </button>
+                </form>
+
+                <p class="text-[11px] text-slate-500 text-center mt-5 flex items-center justify-center gap-1.5">
+                    <i data-lucide="shield-check" class="text-emerald-500 text-xs"></i>
+                    Session is local to this browser. No data leaves your machine.
+                </p>
+            </div>
+        </div>
+    </div>
+
+    <!-- ════════════════════════════════════════════════════════════════════ -->
+    <!-- WORKSPACE (mounted after auth)                                        -->
+    <!-- ════════════════════════════════════════════════════════════════════ -->
+    <div id="workspace" class="hidden opacity-0 transition-opacity duration-500 flex h-screen relative z-10">
+
+        <!-- Sidebar -->
+        <aside class="w-64 sidebar flex-col hidden md:flex z-20">
+            <div class="h-16 flex items-center px-6 border-b border-white/5">
+                <div class="flex items-center gap-3 text-lg font-extrabold tracking-tight">
+                    <div class="w-8 h-8 rounded-xl btn-primary flex items-center justify-center">
+                        <i data-lucide="atom" class="text-white text-sm"></i>
+                    </div>
+                    <span class="bg-clip-text text-transparent bg-gradient-to-r from-white to-slate-400">Epiphany</span>
+                </div>
+            </div>
+
+            <div class="p-4 flex-1 overflow-y-auto">
+                <div class="text-[10px] font-semibold text-slate-500 uppercase tracking-wider mb-3 mt-1">Workspace</div>
+                <nav class="space-y-1">
+                    <button data-view="dashboard" class="nav-item w-full flex items-center gap-3 px-3 py-2 rounded-xl text-sm font-medium transition-colors">
+                        <i data-lucide="layout-dashboard" class="w-5"></i><span>Live Dashboard</span>
+                    </button>
+                    <button data-view="hypotheses" class="nav-item w-full flex items-center gap-3 px-3 py-2 rounded-xl text-sm font-medium transition-colors">
+                        <i data-lucide="flask-conical" class="w-5"></i><span>Hypothesis Log</span>
+                        <span id="nav-count-hyp" class="ml-auto text-[10px] font-mono px-1.5 py-0.5 rounded-md bg-slate-700/50 text-slate-400">0</span>
+                    </button>
+                    <button data-view="deployments" class="nav-item w-full flex items-center gap-3 px-3 py-2 rounded-xl text-sm font-medium transition-colors">
+                        <i data-lucide="git-merge" class="w-5"></i><span>Deployments</span>
+                        <span id="nav-count-dep" class="ml-auto text-[10px] font-mono px-1.5 py-0.5 rounded-md bg-slate-700/50 text-slate-400">0</span>
+                    </button>
+                    <button data-view="connections" class="nav-item w-full flex items-center gap-3 px-3 py-2 rounded-xl text-sm font-medium transition-colors">
+                        <i data-lucide="plug-zap" class="w-5"></i><span>Connections</span>
+                        <span id="nav-count-conn" class="ml-auto text-[10px] font-mono px-1.5 py-0.5 rounded-md bg-slate-700/50 text-slate-400">0/4</span>
+                    </button>
+                </nav>
+
+                <div class="text-[10px] font-semibold text-slate-500 uppercase tracking-wider mb-3 mt-7">MCP Integrations</div>
+                <nav class="space-y-2">
+                    <div class="flex items-center justify-between px-3 py-2 rounded-xl bg-white/[0.02] border border-white/5">
+                        <div class="flex items-center gap-2"><i data-lucide="database" class="text-indigo-400 text-sm"></i><span class="text-sm">Fivetran</span></div>
+                        <div id="dot-fivetran" class="w-2 h-2 rounded-full bg-slate-600"></div>
+                    </div>
+                    <div class="flex items-center justify-between px-3 py-2 rounded-xl bg-white/[0.02] border border-white/5">
+                        <div class="flex items-center gap-2"><i data-lucide="search" class="text-amber-400 text-sm"></i><span class="text-sm">Elastic</span></div>
+                        <div id="dot-elastic" class="w-2 h-2 rounded-full bg-slate-600"></div>
+                    </div>
+                    <div class="flex items-center justify-between px-3 py-2 rounded-xl bg-white/[0.02] border border-white/5">
+                        <div class="flex items-center gap-2"><i data-lucide="sparkles" class="text-violet-400 text-sm"></i><span class="text-sm">Gemini</span></div>
+                        <div id="dot-gemini" class="w-2 h-2 rounded-full bg-slate-600"></div>
+                    </div>
+                    <div class="flex items-center justify-between px-3 py-2 rounded-xl bg-white/[0.02] border border-white/5">
+                        <div class="flex items-center gap-2"><i data-lucide="git-branch" class="text-orange-400 text-sm"></i><span class="text-sm">GitLab</span></div>
+                        <div id="dot-gitlab" class="w-2 h-2 rounded-full bg-slate-600"></div>
+                    </div>
+                </nav>
+            </div>
+
+            <div class="p-4 border-t border-white/5">
+                <div class="flex items-center gap-3">
+                    <div id="user-avatar" class="w-9 h-9 rounded-full btn-emerald flex items-center justify-center text-sm font-bold text-white">—</div>
+                    <div class="min-w-0">
+                        <div id="user-name" class="text-sm font-medium text-white truncate">—</div>
+                        <div id="user-email" class="text-[11px] text-slate-500 truncate">—</div>
+                    </div>
+                    <button id="logout-btn" title="Sign out" class="ml-auto text-slate-500 hover:text-red-400 transition-colors">
+                        <i data-lucide="log-out" class="text-sm"></i>
+                    </button>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Main -->
+        <main class="flex-1 flex flex-col h-screen overflow-y-auto relative">
+            <header class="h-16 flex items-center justify-between px-6 md:px-8 border-b border-white/5 glass-strong sticky top-0 z-30">
+                <div>
+                    <h1 id="ws-view-title" class="text-base font-semibold text-slate-100">Live Dashboard</h1>
+                    <p class="text-[11px] text-slate-500 flex items-center gap-1.5">
+                        <i data-lucide="circle" class="text-[8px]"></i>
+                        Source: <span id="ws-data-source" class="font-mono text-slate-400">connecting…</span>
+                    </p>
+                </div>
+                <div class="flex items-center gap-3">
+                    <div class="hidden sm:flex bg-white/[0.03] text-slate-300 text-xs px-3 py-1.5 rounded-lg font-mono border border-white/5 items-center gap-2">
+                        <i data-lucide="zap" class="text-amber-400 text-xs"></i>Last insight: <span id="ws-last-insight">—</span>
+                    </div>
+                    <button id="force-sync" class="btn btn-emerald text-white px-4 py-1.5 rounded-lg text-sm font-medium flex items-center gap-2 disabled:opacity-50">
+                        <i data-lucide="refresh-cw" class="text-xs"></i>Force Sync
+                    </button>
+                </div>
+            </header>
+
+            <!-- ── VIEW: DASHBOARD ─────────────────────────────────────────── -->
+            <section id="view-dashboard" class="view p-6 md:p-8 max-w-7xl mx-auto w-full space-y-6">
+
+                <!-- Active dataset — proves the agent adapts to ANY data -->
+                <div class="glass p-5 lift">
+                    <div class="flex flex-wrap items-center justify-between gap-4">
+                        <div class="flex items-center gap-3 min-w-0">
+                            <div class="w-11 h-11 rounded-xl bg-emerald-500/15 flex items-center justify-center shrink-0"><i data-lucide="table-2" class="text-emerald-300"></i></div>
+                            <div class="min-w-0">
+                                <div class="flex items-center gap-2">
+                                    <span id="ds-name" class="skeleton font-semibold text-white truncate h-4 w-40">--</span>
+                                    <span id="ds-mode" class="text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded-md bg-slate-600/30 text-slate-400 border border-slate-600/30">--</span>
+                                </div>
+                                <div id="ds-meta" class="skeleton text-xs text-slate-400 mt-1 h-3 w-56">--</div>
+                            </div>
+                        </div>
+                        <div class="flex items-center gap-2 shrink-0">
+                            <select id="ds-select" class="field bg-slate-900/60 border border-slate-700 rounded-lg px-3 py-2 text-xs text-slate-200 outline-none max-w-[200px]"></select>
+                            <label class="btn bg-white/[0.04] hover:bg-white/[0.08] border border-white/10 text-slate-200 text-sm px-3 py-2 rounded-lg cursor-pointer flex items-center gap-2">
+                                <i data-lucide="upload" class="text-xs"></i><span id="ds-upload-label">Upload data</span>
+                                <input id="ds-upload" type="file" accept=".csv,.parquet" class="hidden">
+                            </label>
+                        </div>
+                    </div>
+                    <div id="ds-targets" class="flex flex-wrap items-center gap-2 mt-3"></div>
+                    <p class="text-[11px] text-slate-500 mt-2">Upload any CSV/Parquet — Epiphany auto-detects the target and column types, then investigates it. No configuration needed.</p>
+                </div>
+
+                <!-- Mission Control -->
+                <div class="glass p-6 relative overflow-hidden lift">
+                    <div class="absolute right-0 top-0 w-44 h-44 bg-indigo-500/10 rounded-full blur-3xl -mr-12 -mt-12"></div>
+                    <div class="flex items-center gap-2 mb-1">
+                        <i data-lucide="crosshair" class="text-indigo-400"></i>
+                        <h2 class="font-semibold text-white">Mission Control</h2>
+                        <span class="text-[10px] uppercase tracking-wider bg-indigo-500/15 text-indigo-300 px-2 py-0.5 rounded-full border border-indigo-500/30">Agentic</span>
+                    </div>
+                    <p class="text-xs text-slate-400 mb-4">Describe a business question in plain language. The agent explores your data, forms a hypothesis, validates it, and ships a model.</p>
+                    <textarea id="mission-input" rows="2"
+                        class="field w-full bg-slate-900/60 border border-slate-700 outline-none rounded-xl px-4 py-3 text-sm text-slate-100 placeholder-slate-500 resize-none"
+                        placeholder="e.g. Which factor most strongly predicts churn?"></textarea>
+                    <div class="flex flex-wrap items-center gap-2 mt-3" id="mission-examples"></div>
+                    <div class="flex items-center justify-between gap-3 mt-4">
+                        <div id="mission-status" class="text-xs text-slate-500"></div>
+                        <button id="deploy-agent" type="button"
+                            class="btn btn-primary text-white px-5 py-2 rounded-xl text-sm font-semibold flex items-center gap-2 disabled:opacity-50">
+                            <i data-lucide="rocket" class="text-sm"></i><span id="deploy-agent-label">Deploy Agent</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Hero metrics -->
+                <div class="grid grid-cols-2 lg:grid-cols-4 gap-4" id="metrics-grid">
+                    <div class="glass p-5 lift">
+                        <div class="flex items-center gap-2 text-slate-400 text-xs font-medium mb-2"><i data-lucide="rows-3" class="text-sm"></i>Rows Analyzed</div>
+                        <div id="ws-metric-rows" class="skeleton text-2xl font-bold text-white h-8 w-24">--</div>
+                        <div id="ws-metric-rows-sub" class="skeleton text-[11px] text-emerald-400 mt-2 h-3 w-20">--</div>
+                    </div>
+                    <div class="glass p-5 lift">
+                        <div class="flex items-center gap-2 text-slate-400 text-xs font-medium mb-2"><i data-lucide="flask-conical" class="text-sm"></i>Hypotheses Tested</div>
+                        <div id="ws-metric-hypotheses" class="skeleton text-2xl font-bold text-white h-8 w-16">--</div>
+                        <div id="ws-metric-hyp-sub" class="text-[11px] text-slate-500 mt-2">Adaptive statistics</div>
+                    </div>
+                    <div class="glass p-5 lift border border-emerald-500/25 relative overflow-hidden">
+                        <div class="absolute right-0 top-0 w-24 h-24 bg-emerald-500/10 rounded-full blur-2xl -mr-8 -mt-8"></div>
+                        <div class="flex items-center gap-2 text-emerald-300 text-xs font-medium mb-2"><i data-lucide="badge-check" class="text-sm"></i>Significant Discoveries</div>
+                        <div id="ws-metric-discoveries" class="skeleton text-2xl font-bold text-white h-8 w-16">--</div>
+                        <div id="ws-metric-disc-sub" class="skeleton text-[11px] text-emerald-400 mt-2 h-3 w-16">--</div>
+                    </div>
+                    <div class="glass p-5 lift border border-indigo-500/25 relative overflow-hidden">
+                        <div class="absolute right-0 top-0 w-24 h-24 bg-indigo-500/10 rounded-full blur-2xl -mr-8 -mt-8"></div>
+                        <div class="flex items-center gap-2 text-indigo-300 text-xs font-medium mb-2"><i data-lucide="git-merge" class="text-sm"></i>Models Deployed</div>
+                        <div id="ws-metric-deployments" class="skeleton text-2xl font-bold text-white h-8 w-16">--</div>
+                        <div id="ws-metric-dep-sub" class="text-[11px] text-indigo-400 mt-2">Merge requests</div>
+                    </div>
+                </div>
+
+                <!-- Stream + side column -->
+                <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                    <div class="lg:col-span-2 space-y-6">
+                        <div class="glass flex flex-col h-[480px]">
+                            <div class="border-b border-white/5 p-4 flex justify-between items-center">
+                                <h2 class="font-semibold text-slate-200 flex items-center gap-2"><i data-lucide="radio" class="text-indigo-400"></i>Active Agent Stream</h2>
+                                <span id="ws-stream-status" class="text-xs font-mono bg-slate-500/10 text-slate-400 px-2 py-1 rounded-md border border-slate-500/20">CONNECTING</span>
+                            </div>
+                            <div id="ws-stream" class="flex-1 overflow-y-auto p-4 space-y-3 font-mono text-sm"></div>
+                        </div>
+                    </div>
+
+                    <div class="space-y-6">
+                        <!-- Insight chart -->
+                        <div class="glass p-5 h-[260px] flex flex-col lift">
+                            <div class="flex justify-between items-start mb-3">
+                                <div class="min-w-0">
+                                    <h3 id="ws-insight-title" class="skeleton font-medium text-slate-200 h-4 w-40">--</h3>
+                                    <p id="ws-insight-subtitle" class="skeleton text-[11px] text-slate-500 h-3 w-28 mt-1">--</p>
+                                </div>
+                                <i data-lucide="scatter-chart" class="text-slate-500"></i>
+                            </div>
+                            <div class="flex-1 w-full relative"><canvas id="ws-insight-chart"></canvas></div>
+                        </div>
+
+                        <!-- Deployment card -->
+                        <div class="glass overflow-hidden border border-indigo-500/25 lift">
+                            <div class="p-4 border-b border-white/5">
+                                <div class="flex items-center gap-2 mb-1"><i data-lucide="git-branch" class="text-orange-400"></i><h3 class="font-semibold text-white">Autonomous Deployment</h3></div>
+                                <p id="ws-deploy-subtitle" class="skeleton text-xs text-slate-400 h-3 w-44">--</p>
+                            </div>
+                            <div class="p-4 space-y-3">
+                                <div>
+                                    <div class="text-[11px] text-slate-500 mb-1">Target Branch</div>
+                                    <div id="ws-deploy-branch" class="skeleton text-sm text-indigo-300 font-mono bg-slate-800/60 px-2 py-1 rounded-md inline-block h-6 w-40">--</div>
+                                </div>
+                                <div>
+                                    <div class="text-[11px] text-slate-500 mb-1">Generated Asset</div>
+                                    <div class="flex items-center gap-2 text-sm text-slate-300"><i data-lucide="file-code" class="text-amber-400 text-sm"></i><span id="ws-deploy-asset" class="skeleton font-mono h-4 w-32">--</span></div>
+                                </div>
+                                <a id="ws-deploy-mr-link" href="#" target="_blank" rel="noopener"
+                                   class="btn pointer-events-none opacity-50 w-full bg-white/[0.04] border border-slate-600 text-white py-2 rounded-lg text-sm flex items-center justify-center gap-2">
+                                    <i data-lucide="git-pull-request" class="text-sm"></i><span id="ws-deploy-mr-label">No merge request yet</span>
+                                </a>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Generated code -->
+                <div class="glass overflow-hidden">
+                    <div class="flex items-center justify-between bg-white/[0.03] px-4 py-2.5 border-b border-white/5">
+                        <div class="flex gap-1.5">
+                            <div class="w-3 h-3 rounded-full bg-red-500/80"></div><div class="w-3 h-3 rounded-full bg-amber-500/80"></div><div class="w-3 h-3 rounded-full bg-emerald-500/80"></div>
+                        </div>
+                        <div class="text-xs font-mono text-slate-400">Generated model — <span id="ws-code-filename">awaiting_model.py</span></div>
+                        <button id="ws-code-copy" class="text-slate-500 hover:text-white transition-colors"><i data-lucide="copy" class="text-sm"></i></button>
+                    </div>
+                    <div class="bg-[#070b14] overflow-x-auto max-h-[380px] overflow-y-auto">
+                        <div id="ws-code-skeleton" class="p-4 space-y-2">
+                            <span class="skeleton block h-3.5 w-3/4">--</span><span class="skeleton block h-3.5 w-1/2">--</span>
+                            <span class="skeleton block h-3.5 w-2/3">--</span><span class="skeleton block h-3.5 w-1/3">--</span>
+                        </div>
+<pre id="ws-code-pre" class="hidden !bg-transparent text-[13px] leading-relaxed m-0"><code id="ws-code-block" class="language-python !bg-transparent"></code></pre>
+                    </div>
+                </div>
+
+                <!-- Interventions table -->
+                <div class="glass overflow-hidden">
+                    <div class="flex items-center justify-between p-4 border-b border-white/5">
+                        <h2 class="font-semibold text-slate-200 flex items-center gap-2"><i data-lucide="zap" class="text-indigo-400"></i>Actionable Interventions</h2>
+                        <span class="text-xs text-slate-500">Live agent history</span>
+                    </div>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-sm">
+                            <thead>
+                                <tr class="text-left text-[10px] uppercase tracking-wider text-slate-500 border-b border-white/5">
+                                    <th class="px-4 py-3 font-medium">When</th>
+                                    <th class="px-4 py-3 font-medium">Discovered Driver</th>
+                                    <th class="px-4 py-3 font-medium">Outcome</th>
+                                    <th class="px-4 py-3 font-medium">p-value</th>
+                                    <th class="px-4 py-3 font-medium">Action</th>
+                                </tr>
+                            </thead>
+                            <tbody id="ws-interventions-body"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+
+            <!-- ── VIEW: HYPOTHESES ────────────────────────────────────────── -->
+            <section id="view-hypotheses" class="view p-6 md:p-8 max-w-5xl mx-auto w-full space-y-4 hidden">
+                <div class="flex items-center gap-2 mb-2">
+                    <i data-lucide="flask-conical" class="text-indigo-400"></i>
+                    <h2 class="text-lg font-semibold text-white">Hypothesis Log</h2>
+                </div>
+                <div id="ws-hypotheses-body" class="space-y-3"></div>
+            </section>
+
+            <!-- ── VIEW: DEPLOYMENTS ───────────────────────────────────────── -->
+            <section id="view-deployments" class="view p-6 md:p-8 max-w-5xl mx-auto w-full space-y-4 hidden">
+                <div class="flex items-center gap-2 mb-2">
+                    <i data-lucide="git-merge" class="text-orange-400"></i>
+                    <h2 class="text-lg font-semibold text-white">Deployments</h2>
+                </div>
+                <div id="ws-deployments-body" class="space-y-3"></div>
+            </section>
+
+            <!-- ── VIEW: CONNECTIONS ───────────────────────────────────────── -->
+            <section id="view-connections" class="view p-6 md:p-8 max-w-4xl mx-auto w-full space-y-5 hidden">
+                <div>
+                    <div class="flex items-center gap-2 mb-1">
+                        <i data-lucide="plug-zap" class="text-indigo-400"></i>
+                        <h2 class="text-lg font-semibold text-white">Connections</h2>
+                    </div>
+                    <p class="text-sm text-slate-400">Connect your own providers. Credentials are stored locally on this server and applied instantly — no restart needed. Leave a secret field blank to keep the existing value.</p>
+                </div>
+
+                <!-- Gemini -->
+                <div class="glass p-5">
+                    <div class="flex items-center justify-between mb-4">
+                        <div class="flex items-center gap-3">
+                            <div class="w-10 h-10 rounded-xl bg-violet-500/15 flex items-center justify-center"><i data-lucide="sparkles" class="text-violet-300"></i></div>
+                            <div><div class="font-semibold text-white">Gemini</div><div class="text-xs text-slate-500">Reasoning brain — aistudio.google.com/apikey</div></div>
+                        </div>
+                        <span id="conn-status-gemini" class="text-xs px-2 py-1 rounded-md bg-slate-500/10 text-slate-400 border border-slate-500/20">checking…</span>
+                    </div>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        <div class="md:col-span-2">
+                            <label class="block text-xs text-slate-400 mb-1">API Key</label>
+                            <input id="conn-gemini-key" type="password" class="field conn-input w-full bg-slate-900/60 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white placeholder-slate-500 outline-none" placeholder="AIza… (leave blank to keep)">
+                        </div>
+                        <div>
+                            <label class="block text-xs text-slate-400 mb-1">Model</label>
+                            <input id="conn-gemini-model" type="text" class="field conn-input w-full bg-slate-900/60 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white placeholder-slate-500 outline-none" placeholder="gemini-2.5-flash">
+                        </div>
+                    </div>
+                    <div class="flex justify-end mt-3"><button data-provider="gemini" class="conn-save btn btn-primary text-white text-sm font-medium px-4 py-2 rounded-lg">Save & Connect</button></div>
+                </div>
+
+                <!-- Elastic -->
+                <div class="glass p-5">
+                    <div class="flex items-center justify-between mb-4">
+                        <div class="flex items-center gap-3">
+                            <div class="w-10 h-10 rounded-xl bg-amber-500/15 flex items-center justify-center"><i data-lucide="search" class="text-amber-300"></i></div>
+                            <div><div class="font-semibold text-white">Elastic</div><div class="text-xs text-slate-500">Your telemetry index (falls back to a local CSV)</div></div>
+                        </div>
+                        <span id="conn-status-elastic" class="text-xs px-2 py-1 rounded-md bg-slate-500/10 text-slate-400 border border-slate-500/20">checking…</span>
+                    </div>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        <div><label class="block text-xs text-slate-400 mb-1">API Key</label><input id="conn-elastic-key" type="password" class="field conn-input w-full bg-slate-900/60 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white placeholder-slate-500 outline-none" placeholder="(leave blank to keep)"></div>
+                        <div><label class="block text-xs text-slate-400 mb-1">Cloud ID</label><input id="conn-elastic-cloudid" type="text" class="field conn-input w-full bg-slate-900/60 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white placeholder-slate-500 outline-none" placeholder="deployment:base64…"></div>
+                        <div><label class="block text-xs text-slate-400 mb-1">URL (instead of Cloud ID)</label><input id="conn-elastic-url" type="text" class="field conn-input w-full bg-slate-900/60 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white placeholder-slate-500 outline-none" placeholder="https://host:9200"></div>
+                        <div><label class="block text-xs text-slate-400 mb-1">Index</label><input id="conn-elastic-index" type="text" class="field conn-input w-full bg-slate-900/60 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white placeholder-slate-500 outline-none" placeholder="prod_db.saas_telemetry"></div>
+                    </div>
+                    <div class="flex justify-end mt-3"><button data-provider="elastic" class="conn-save btn btn-primary text-white text-sm font-medium px-4 py-2 rounded-lg">Save & Connect</button></div>
+                </div>
+
+                <!-- Fivetran -->
+                <div class="glass p-5">
+                    <div class="flex items-center justify-between mb-4">
+                        <div class="flex items-center gap-3">
+                            <div class="w-10 h-10 rounded-xl bg-indigo-500/15 flex items-center justify-center"><i data-lucide="database" class="text-indigo-300"></i></div>
+                            <div><div class="font-semibold text-white">Fivetran</div><div class="text-xs text-slate-500">Sync trigger (optional)</div></div>
+                        </div>
+                        <span id="conn-status-fivetran" class="text-xs px-2 py-1 rounded-md bg-slate-500/10 text-slate-400 border border-slate-500/20">checking…</span>
+                    </div>
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+                        <div><label class="block text-xs text-slate-400 mb-1">API Key</label><input id="conn-fivetran-key" type="password" class="field conn-input w-full bg-slate-900/60 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white placeholder-slate-500 outline-none" placeholder="(leave blank to keep)"></div>
+                        <div><label class="block text-xs text-slate-400 mb-1">API Secret</label><input id="conn-fivetran-secret" type="password" class="field conn-input w-full bg-slate-900/60 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white placeholder-slate-500 outline-none" placeholder="(leave blank to keep)"></div>
+                        <div><label class="block text-xs text-slate-400 mb-1">Connector ID</label><input id="conn-fivetran-connector" type="text" class="field conn-input w-full bg-slate-900/60 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white placeholder-slate-500 outline-none" placeholder="connector_id"></div>
+                    </div>
+                    <div class="flex justify-end mt-3"><button data-provider="fivetran" class="conn-save btn btn-primary text-white text-sm font-medium px-4 py-2 rounded-lg">Save & Connect</button></div>
+                </div>
+
+                <!-- GitLab -->
+                <div class="glass p-5">
+                    <div class="flex items-center justify-between mb-4">
+                        <div class="flex items-center gap-3">
+                            <div class="w-10 h-10 rounded-xl bg-orange-500/15 flex items-center justify-center"><i data-lucide="git-branch" class="text-orange-300"></i></div>
+                            <div><div class="font-semibold text-white">GitLab</div><div class="text-xs text-slate-500">Ships validated models as Merge Requests</div></div>
+                        </div>
+                        <span id="conn-status-gitlab" class="text-xs px-2 py-1 rounded-md bg-slate-500/10 text-slate-400 border border-slate-500/20">checking…</span>
+                    </div>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        <div><label class="block text-xs text-slate-400 mb-1">Access Token</label><input id="conn-gitlab-token" type="password" class="field conn-input w-full bg-slate-900/60 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white placeholder-slate-500 outline-none" placeholder="glpat-… (leave blank to keep)"></div>
+                        <div><label class="block text-xs text-slate-400 mb-1">Project ID</label><input id="conn-gitlab-project" type="text" class="field conn-input w-full bg-slate-900/60 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white placeholder-slate-500 outline-none" placeholder="12345678"></div>
+                        <div><label class="block text-xs text-slate-400 mb-1">GitLab URL</label><input id="conn-gitlab-url" type="text" class="field conn-input w-full bg-slate-900/60 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white placeholder-slate-500 outline-none" placeholder="https://gitlab.com"></div>
+                        <div><label class="block text-xs text-slate-400 mb-1">Target Branch</label><input id="conn-gitlab-branch" type="text" class="field conn-input w-full bg-slate-900/60 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white placeholder-slate-500 outline-none" placeholder="main"></div>
+                    </div>
+                    <label class="flex items-center gap-2 mt-3 text-sm text-slate-300 cursor-pointer">
+                        <input id="conn-gitlab-autodeploy" type="checkbox" class="w-4 h-4 rounded accent-indigo-500">
+                        Auto-deploy — open a <span class="text-orange-300 font-medium">real</span> Merge Request on a significant finding
+                    </label>
+                    <div class="flex justify-end mt-3"><button data-provider="gitlab" class="conn-save btn btn-primary text-white text-sm font-medium px-4 py-2 rounded-lg">Save & Connect</button></div>
+                </div>
+
+                <!-- Data source -->
+                <div class="glass p-5">
+                    <div class="flex items-center gap-3 mb-4">
+                        <div class="w-10 h-10 rounded-xl bg-emerald-500/15 flex items-center justify-center"><i data-lucide="file-spreadsheet" class="text-emerald-300"></i></div>
+                        <div><div class="font-semibold text-white">Local data source</div><div class="text-xs text-slate-500">Used when Elastic isn't connected — point at any CSV/Parquet on the server</div></div>
+                    </div>
+                    <input id="conn-data-csv" type="text" class="field conn-input w-full bg-slate-900/60 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white placeholder-slate-500 outline-none" placeholder="data/train.csv">
+                    <div class="flex justify-end mt-3"><button data-provider="general" class="conn-save btn btn-emerald text-white text-sm font-medium px-4 py-2 rounded-lg">Save</button></div>
+                </div>
+
+                <div id="conn-toast" class="hidden fixed bottom-6 right-6 z-50 glass-strong border border-emerald-500/30 text-sm text-white px-4 py-3 rounded-xl flex items-center gap-2 shadow-2xl">
+                    <i data-lucide="check-circle" class="text-emerald-400"></i><span id="conn-toast-text"></span>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <script>
+    /* ════════════════════════════════════════════════════════════════════
+       TASK B — Global reactive state engine
+       ════════════════════════════════════════════════════════════════════ */
+    window.AppState = { authenticated: false, missionActive: false, currentInsight: null, logs: [] };
+    const State = {
+        view: 'dashboard',
+        chart: null,
+        user: null,
+        counts: { hypotheses: 0, deployments: 0 },
+    };
+
+    const API = {
+        status:        '/api/agent/status',
+        metrics:       '/api/agent/metrics',
+        interventions: '/api/agent/interventions',
+        hypotheses:    '/api/agent/hypotheses',
+        deployments:   '/api/agent/deployments',
+        latestInsight: '/api/agent/latest-insight',
+        latestModel:   '/api/agent/latest-model',
+        run:           '/api/agent/run',
+        connections:   '/api/agent/connections',
+        connect:       '/api/agent/connect',
+        dataset:       '/api/agent/dataset',
+        datasets:      '/api/agent/datasets',
+        selectDataset: '/api/agent/select-dataset',
+        uploadDataset: '/api/agent/upload-dataset',
+        ws:            '/ws/agent-stream',
+    };
+
+    // ── tiny DOM + format helpers ──────────────────────────────────────
+    const $  = (id) => document.getElementById(id);
+    const esc = (s) => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    const fmtInt = (n) => Number(n || 0).toLocaleString();
+    const fmtCompact = (n) => Intl.NumberFormat('en', { notation: 'compact', maximumFractionDigits: 1 }).format(Number(n || 0));
+    const fmtP = (p) => { if (p == null) return '—'; const n = Number(p); return n < 0.0001 ? n.toExponential(2) : n.toFixed(5); };
+    const fmtWhen = (iso) => iso ? String(iso).slice(0, 19).replace('T', ' ') : '—';
+    function setText(id, value) { const el = $(id); if (el) { el.textContent = value; el.classList.remove('skeleton'); } }
+    function timeAgo(iso) {
+        if (!iso) return 'never';
+        const then = new Date(iso).getTime(); if (Number.isNaN(then)) return 'never';
+        const s = Math.max(0, Math.floor((Date.now() - then) / 1000));
+        if (s < 60) return s + 's ago';
+        if (s < 3600) return Math.floor(s / 60) + 'm ago';
+        if (s < 86400) return Math.floor(s / 3600) + 'h ago';
+        return Math.floor(s / 86400) + 'd ago';
+    }
+    function icons() { if (window.lucide) lucide.createIcons(); }
+    async function getJSON(url) { const r = await fetch(url); if (!r.ok) throw new Error(url + ' ' + r.status); return r.json(); }
+
+    /* ════════════════════════════════════════════════════════════════════
+       TASK A — Authentication gate logic
+       ════════════════════════════════════════════════════════════════════ */
+    (function auth() {
+        const PK = (window.__CLERK_PK__ || '').trim();
+        const SESSION_KEY = 'epiphany.session';
+        let mode = 'signup';   // 'signup' | 'login'
+        let step = 'form';     // 'form' | 'otp' (Clerk email-code verification)
+        let clerk = null;
+
+        const pill = $('seg-pill'), tabSignup = $('tab-signup'), tabLogin = $('tab-login'), seg = $('auth-seg');
+        const credFields = $('auth-cred-fields'), otpWrap = $('auth-otp-wrap'), otpEl = $('auth-otp'), otpEmail = $('auth-otp-email');
+        const nameWrap = $('auth-name-wrap'), nameEl = $('auth-name'), emailEl = $('auth-email'), passEl = $('auth-password');
+        const title = $('auth-title'), subtitle = $('auth-subtitle'), submitLabel = $('auth-submit-label');
+        const errBox = $('auth-error'), errText = $('auth-error-text'), submitBtn = $('auth-submit');
+
+        function applyMode() {
+            const signup = mode === 'signup';
+            pill.style.transform = signup ? 'translateX(0)' : 'translateX(calc(100% + 4px))';
+            tabSignup.classList.toggle('text-white', signup);
+            tabSignup.classList.toggle('text-slate-400', !signup);
+            tabLogin.classList.toggle('text-white', !signup);
+            tabLogin.classList.toggle('text-slate-400', signup);
+            nameWrap.style.display = signup ? '' : 'none';
+            title.textContent = signup ? 'Create your workspace' : 'Welcome back';
+            subtitle.textContent = signup ? 'Start your autonomous data scientist in seconds.' : 'Sign in to your Epiphany workspace.';
+            passEl.setAttribute('autocomplete', signup ? 'new-password' : 'current-password');
+            setStep('form');
+        }
+        function setStep(s) {
+            step = s;
+            const otp = s === 'otp';
+            if (credFields) credFields.style.display = otp ? 'none' : '';
+            if (otpWrap) otpWrap.classList.toggle('hidden', !otp);
+            if (seg) seg.style.display = otp ? 'none' : '';
+            submitLabel.textContent = otp ? 'Verify & continue' : (mode === 'signup' ? 'Get Started' : 'Sign In');
+            hideError();
+        }
+        function hideError() { errBox.classList.add('hidden'); }
+        function showError(msg) { errText.textContent = msg; errBox.classList.remove('hidden'); }
+
+        tabSignup.addEventListener('click', () => { mode = 'signup'; applyMode(); });
+        tabLogin.addEventListener('click', () => { mode = 'login'; applyMode(); });
+
+        $('auth-eye').addEventListener('click', () => {
+            passEl.type = passEl.type === 'password' ? 'text' : 'password';
+            $('auth-eye').innerHTML = '<i data-lucide="' + (passEl.type === 'password' ? 'eye' : 'eye-off') + '" class="text-sm"></i>';
+            icons();
+        });
+
+        function validate() {
+            const email = emailEl.value.trim(), pass = passEl.value, name = nameEl.value.trim();
+            const emailOk = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+            if (mode === 'signup' && name.length < 2) return 'Please enter your full name.';
+            if (!emailOk) return 'Enter a valid corporate email address.';
+            if (pass.length < 6) return 'Password must be at least 6 characters.';
+            return null;
+        }
+
+        // ── Clerk-backed flow (custom card) ─────────────────────────────
+        function clerkErr(e) {
+            try { return (e.errors && e.errors[0] && (e.errors[0].longMessage || e.errors[0].message)) || e.message || 'Something went wrong.'; }
+            catch (_) { return 'Something went wrong.'; }
+        }
+        function clerkUser() {
+            const u = clerk.user || {};
+            const email = (u.primaryEmailAddress && u.primaryEmailAddress.emailAddress) ||
+                (u.emailAddresses && u.emailAddresses[0] && u.emailAddresses[0].emailAddress) || '';
+            const name = [u.firstName, u.lastName].filter(Boolean).join(' ') || (email ? email.split('@')[0] : 'User');
+            return { name: name, email: email };
+        }
+        async function clerkSubmit() {
+            submitBtn.disabled = true;
+            try {
+                if (step === 'otp') {
+                    const code = (otpEl.value || '').trim();
+                    if (!/^\d{4,8}$/.test(code)) { showError('Enter the 6-digit code we emailed you.'); return; }
+                    const res = await clerk.client.signUp.attemptEmailAddressVerification({ code: code });
+                    if (res.status === 'complete') { await clerk.setActive({ session: res.createdSessionId }); mountWorkspace(clerkUser()); return; }
+                    showError("That code didn't verify. Please try again."); return;
+                }
+                const problem = validate(); if (problem) { showError(problem); return; }
+                const email = emailEl.value.trim(), password = passEl.value;
+                if (mode === 'signup') {
+                    const parts = nameEl.value.trim().split(/\s+/);
+                    const su = await clerk.client.signUp.create({
+                        emailAddress: email, password: password,
+                        firstName: parts[0] || undefined,
+                        lastName: parts.slice(1).join(' ') || undefined,
+                    });
+                    if (su.status === 'complete') { await clerk.setActive({ session: su.createdSessionId }); mountWorkspace(clerkUser()); return; }
+                    await clerk.client.signUp.prepareEmailAddressVerification({ strategy: 'email_code' });
+                    if (otpEmail) otpEmail.textContent = email;
+                    setStep('otp');
+                    setTimeout(() => otpEl && otpEl.focus(), 50);
+                } else {
+                    const si = await clerk.client.signIn.create({ identifier: email, password: password });
+                    if (si.status === 'complete') { await clerk.setActive({ session: si.createdSessionId }); mountWorkspace(clerkUser()); return; }
+                    showError('Additional verification is required to sign in.');
+                }
+            } catch (err) {
+                showError(clerkErr(err));
+            } finally {
+                submitBtn.disabled = false;
+            }
+        }
+        function demoSubmit() {
+            const problem = validate(); if (problem) { showError(problem); return; }
+            const user = { name: (nameEl.value.trim() || emailEl.value.trim().split('@')[0]), email: emailEl.value.trim() };
+            try { localStorage.setItem(SESSION_KEY, JSON.stringify(user)); } catch (_) {}
+            mountWorkspace(user);
+        }
+
+        $('auth-form').addEventListener('submit', (e) => {
+            e.preventDefault(); hideError();
+            if (PK && clerk) { clerkSubmit(); } else { demoSubmit(); }
+        });
+
+        // ── Landing → Auth navigation ──────────────────────────────────
+        function showAuth(m) {
+            mode = m; applyMode();
+            const landingEl = $('landing'); if (landingEl) landingEl.style.display = 'none';
+            $('auth-container').classList.remove('hidden');
+            setTimeout(() => (m === 'signup' ? nameEl : emailEl).focus(), 50);
+        }
+        function showLanding() {
+            $('auth-container').classList.add('hidden');
+            const landingEl = $('landing'); if (landingEl) landingEl.style.display = '';
+        }
+        ['landing-start', 'landing-start-2', 'landing-start-3'].forEach((id) => {
+            const b = $(id); if (b) b.addEventListener('click', () => showAuth('signup'));
+        });
+        const loginBtn = $('landing-login'); if (loginBtn) loginBtn.addEventListener('click', () => showAuth('login'));
+        const backBtn = $('auth-back'); if (backBtn) backBtn.addEventListener('click', () => {
+            if (step === 'otp') { setStep('form'); } else { showLanding(); }
+        });
+
+        $('logout-btn').addEventListener('click', async () => {
+            if (PK && clerk) { try { await clerk.signOut(); } catch (_) {} }
+            try { localStorage.removeItem(SESSION_KEY); } catch (_) {}
+            location.reload();
+        });
+
+        applyMode();
+        icons();
+
+        // ── Backend: real Clerk when a publishable key is present; else demo
+        function loadClerkScript() {
+            return new Promise((resolve, reject) => {
+                if (window.Clerk) return resolve();
+                const s = document.createElement('script');
+                s.src = 'https://cdn.jsdelivr.net/npm/@clerk/clerk-js@5/dist/clerk.browser.js';
+                s.async = true; s.crossOrigin = 'anonymous';
+                s.onload = resolve; s.onerror = () => reject(new Error('clerk-js failed to load'));
+                document.head.appendChild(s);
+            });
+        }
+        function restoreDemo() {
+            try { const saved = JSON.parse(localStorage.getItem(SESSION_KEY) || 'null'); if (saved && saved.email) mountWorkspace(saved); } catch (_) {}
+        }
+        if (PK) {
+            (async () => {
+                try {
+                    await loadClerkScript();
+                    const C = window.Clerk;
+                    clerk = (typeof C === 'function') ? new C(PK) : C;
+                    await clerk.load();
+                    if (clerk.user) mountWorkspace(clerkUser());
+                } catch (e) {
+                    console.error('Clerk unavailable; using local demo login.', e);
+                    clerk = null;
+                    restoreDemo();
+                }
+            })();
+        } else {
+            restoreDemo();
+        }
+    })();
+
+    // Mount the workspace with a smooth fade-out → fade-in transition.
+    function mountWorkspace(user) {
+        if (window.AppState.authenticated) return;
+        window.AppState.authenticated = true;
+        State.user = user;
+
+        const authEl = $('auth-container'), ws = $('workspace'), landingEl = $('landing');
+        authEl.classList.add('fade-out');
+        if (landingEl) landingEl.classList.add('fade-out');
+        setTimeout(() => {
+            authEl.style.display = 'none';
+            if (landingEl) landingEl.style.display = 'none';
+            ws.classList.remove('hidden');
+            requestAnimationFrame(() => ws.classList.remove('opacity-0'));
+
+            // Profile chip
+            setText('user-name', user.name);
+            setText('user-email', user.email);
+            const av = $('user-avatar');
+            if (av) av.textContent = (user.name || '?').trim().charAt(0).toUpperCase();
+
+            initWorkspace();
+            icons();
+        }, 480);
+    }
+
+    /* ════════════════════════════════════════════════════════════════════
+       TASK C — Workspace: SPA views, hydration, chart, table, WebSocket
+       ════════════════════════════════════════════════════════════════════ */
+    function initWorkspace() {
+        buildChart();
+        wireNav();
+        wireMission();
+        wireDataset();
+        wireForceSync();
+        wireCodeCopy();
+        connectStream();
+        hydrateAll();
+        setInterval(hydrateAll, 5000);
+        document.addEventListener('epiphany:cycle-updated', hydrateAll);
+    }
+
+    // ── SPA view switching (no reload) ─────────────────────────────────
+    const VIEW_TITLES = { dashboard: 'Live Dashboard', hypotheses: 'Hypothesis Log', deployments: 'Deployments', connections: 'Connections' };
+    const VIEWS = ['dashboard', 'hypotheses', 'deployments', 'connections'];
+    function wireNav() {
+        document.querySelectorAll('.nav-item').forEach((btn) => {
+            btn.addEventListener('click', () => switchView(btn.dataset.view));
+        });
+        wireConnections();
+        switchView('dashboard');
+    }
+    function switchView(name) {
+        State.view = name;
+        VIEWS.forEach((v) => {
+            const sec = $('view-' + v);
+            if (sec) sec.classList.toggle('hidden', v !== name);
+        });
+        // re-trigger entrance animation
+        const active = $('view-' + name);
+        if (active) { active.classList.remove('view'); void active.offsetWidth; active.classList.add('view'); }
+        document.querySelectorAll('.nav-item').forEach((btn) => {
+            const on = btn.dataset.view === name;
+            btn.classList.toggle('bg-indigo-500/10', on);
+            btn.classList.toggle('text-indigo-300', on);
+            btn.classList.toggle('border', on);
+            btn.classList.toggle('border-indigo-500/20', on);
+            btn.classList.toggle('text-slate-400', !on);
+            btn.classList.toggle('hover:bg-white/[0.03]', !on);
+        });
+        setText('ws-view-title', VIEW_TITLES[name] || 'Workspace');
+        if (name === 'hypotheses') hydrateHypotheses();
+        if (name === 'deployments') hydrateDeployments();
+        if (name === 'connections') hydrateConnections();
+        icons();
+    }
+
+    // ── Connections: live status + per-provider save ───────────────────
+    function connBadge(el, connected) {
+        if (!el) return;
+        el.textContent = connected ? 'Connected' : 'Not connected';
+        el.className = 'text-xs px-2 py-1 rounded-md border ' + (connected
+            ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
+            : 'bg-slate-500/10 text-slate-400 border-slate-500/20');
+    }
+    function setVal(id, v) { const el = $(id); if (el && v != null) el.value = v; }
+    async function hydrateConnections() {
+        try {
+            const c = await getJSON(API.connections);
+            connBadge($('conn-status-gemini'), c.gemini.connected);
+            connBadge($('conn-status-elastic'), c.elastic.connected);
+            connBadge($('conn-status-fivetran'), c.fivetran.connected);
+            connBadge($('conn-status-gitlab'), c.gitlab.connected);
+            // Prefill non-secret fields (never secrets — those stay blank).
+            setVal('conn-gemini-model', c.gemini.model);
+            setVal('conn-elastic-index', c.elastic.index);
+            setVal('conn-gitlab-url', c.gitlab.url);
+            setVal('conn-gitlab-branch', c.gitlab.target_branch);
+            setVal('conn-gitlab-project', c.gitlab.project_id);
+            setVal('conn-fivetran-connector', c.fivetran.connector_id);
+            setVal('conn-data-csv', c.general.data_csv_path);
+            const ad = $('conn-gitlab-autodeploy'); if (ad) ad.checked = !!c.gitlab.auto_deploy;
+            const n = [c.gemini, c.elastic, c.fivetran, c.gitlab].filter((p) => p.connected).length;
+            setText('nav-count-conn', n + '/4');
+            // Secret placeholders reflect whether a value already exists.
+            [['conn-gemini-key', c.gemini.key_hint], ['conn-elastic-key', c.elastic.key_hint],
+             ['conn-fivetran-key', c.fivetran.key_hint], ['conn-gitlab-token', c.gitlab.token_hint]]
+                .forEach(([id, hint]) => { const el = $(id); if (el) el.placeholder = hint ? (hint + ' — leave blank to keep') : 'not set'; });
+        } catch (_) {}
+    }
+    // Map each provider's form inputs → backend field names.
+    const CONN_MAP = {
+        gemini:   { secret: { conn_gemini_key: 'gemini-key' }, plain: { gemini_api_key: 'gemini-key', gemini_model: 'gemini-model' } },
+        elastic:  { plain: { elastic_api_key: 'elastic-key', elastic_cloud_id: 'elastic-cloudid', elastic_url: 'elastic-url', elastic_index: 'elastic-index' }, secretFields: ['elastic_api_key'] },
+        fivetran: { plain: { fivetran_api_key: 'fivetran-key', fivetran_api_secret: 'fivetran-secret', fivetran_connector_id: 'fivetran-connector' }, secretFields: ['fivetran_api_key', 'fivetran_api_secret'] },
+        gitlab:   { plain: { gitlab_token: 'gitlab-token', gitlab_project_id: 'gitlab-project', gitlab_url: 'gitlab-url', gitlab_target_branch: 'gitlab-branch' }, secretFields: ['gitlab_token'] },
+        general:  { plain: { data_csv_path: 'data-csv' } },
+    };
+    function buildPayload(provider) {
+        const cfg = CONN_MAP[provider]; const payload = {};
+        const secretSet = new Set(cfg.secretFields || Object.keys(cfg.secret || {}));
+        Object.entries(cfg.plain || {}).forEach(([field, suffix]) => {
+            const el = $('conn-' + suffix); if (!el) return;
+            const v = (el.value || '').trim();
+            // Omit blank secret fields so the saved value is preserved.
+            if (secretSet.has(field) && v === '') return;
+            payload[field] = v;
+        });
+        if (provider === 'gitlab') payload.auto_deploy = !!($('conn-gitlab-autodeploy') || {}).checked;
+        return payload;
+    }
+    function toast(msg) {
+        const t = $('conn-toast'); if (!t) return;
+        setText('conn-toast-text', msg); t.classList.remove('hidden');
+        setTimeout(() => t.classList.add('hidden'), 2600);
+    }
+    function wireConnections() {
+        document.querySelectorAll('.conn-save').forEach((btn) => {
+            btn.addEventListener('click', async () => {
+                const provider = btn.dataset.provider;
+                btn.disabled = true; const orig = btn.textContent; btn.textContent = 'Saving…';
+                try {
+                    const res = await fetch(API.connect, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(buildPayload(provider)) });
+                    if (!res.ok) throw new Error('save failed');
+                    // Clear secret inputs after a successful save.
+                    ['conn-gemini-key', 'conn-elastic-key', 'conn-fivetran-key', 'conn-fivetran-secret', 'conn-gitlab-token'].forEach((id) => { const el = $(id); if (el) el.value = ''; });
+                    await hydrateConnections();
+                    await hydrateStatus();      // refresh sidebar provider dots
+                    toast(provider.charAt(0).toUpperCase() + provider.slice(1) + ' saved & applied.');
+                } catch (e) {
+                    toast('Could not save ' + provider + '. Check the values.');
+                } finally {
+                    btn.disabled = false; btn.textContent = orig; icons();
+                }
+            });
+        });
+    }
+
+    // ── Chart.js: fully rebuild scales/datasets/legend from latest-insight ─
+    function buildChart() {
+        const ctx = $('ws-insight-chart').getContext('2d');
+        State.chart = makeChart(ctx, [], 'Discovered Driver', 'Outcome', true);
+    }
+    function makeChart(ctx, points, xLabel, yLabel, live) {
+        const accent = live ? '#6366f1' : '#94a3b8';
+        return new Chart(ctx, {
+            type: 'scatter',
+            data: {
+                datasets: [{
+                    label: xLabel + ' → ' + yLabel,
+                    data: points,
+                    backgroundColor: live ? 'rgba(99,102,241,.75)' : 'rgba(148,163,184,.6)',
+                    borderColor: accent, pointRadius: 4, showLine: true, tension: 0.3, borderWidth: 2,
+                }],
+            },
+            options: {
+                responsive: true, maintainAspectRatio: false,
+                plugins: {
+                    legend: { display: true, labels: { color: '#94a3b8', boxWidth: 10, font: { size: 10 } } },
+                    tooltip: { callbacks: { label: (c) => xLabel + ' ' + c.parsed.x + ' → ' + (c.parsed.y * 100).toFixed(1) + '% ' + yLabel } },
+                },
+                scales: {
+                    x: { title: { display: true, text: xLabel, color: '#94a3b8', font: { size: 11 } }, grid: { color: 'rgba(148,163,184,.08)' }, ticks: { color: '#64748b' } },
+                    y: { title: { display: true, text: yLabel, color: '#94a3b8', font: { size: 11 } }, grid: { color: 'rgba(148,163,184,.08)' }, ticks: { color: '#64748b' } },
+                },
+            },
+        });
+    }
+    async function hydrateInsight() {
+        const data = await getJSON(API.latestInsight);
+        window.AppState.currentInsight = data;
+        setText('ws-insight-title', data.title || 'Discovered Driver Analysis');
+        const sub = $('ws-insight-subtitle');
+        if (sub) {
+            sub.classList.remove('skeleton');
+            sub.textContent = data.feature
+                ? (data.is_significant ? 'Validated' : 'Exploring') + ' · ' + (data.mode === 'live' ? 'live data' : 'local data')
+                : "Awaiting the agent's first discovery…";
+        }
+        // Completely reset and rebuild the chart instance from the live properties.
+        const pts = (data.points || []).map((p) => ({ x: p.x, y: p.y }));
+        if (State.chart) State.chart.destroy();
+        const ctx = $('ws-insight-chart').getContext('2d');
+        State.chart = makeChart(ctx, pts, data.x_label || 'Driver', data.y_label || 'Outcome', data.mode === 'live');
+    }
+
+    // ── Hero metrics + last insight ────────────────────────────────────
+    async function hydrateMetrics() {
+        const m = await getJSON(API.metrics);
+        setText('ws-metric-rows', fmtCompact(m.rows_analyzed));
+        setText('ws-metric-hypotheses', fmtInt(m.hypotheses_tested));
+        setText('ws-metric-discoveries', fmtInt(m.significant_discoveries));
+        setText('ws-metric-deployments', fmtInt(m.models_deployed));
+        const rate = Math.round((m.significance_rate || 0) * 100);
+        setText('ws-metric-rows-sub', m.live_cycles ? (m.live_cycles + ' live cycles') : 'all cycles');
+        setText('ws-metric-disc-sub', rate + '% significant');
+        setText('ws-last-insight', timeAgo(m.last_insight_at));
+    }
+
+    // ── Provider status dots + data source ─────────────────────────────
+    const DOT = { live: 'bg-emerald-500 pulse-live', local: 'bg-amber-500', 'data-driven': 'bg-amber-500' };
+    async function hydrateStatus() {
+        const s = await getJSON(API.status);
+        const p = s.providers || {};
+        [['dot-fivetran', p.fivetran], ['dot-elastic', p.elastic], ['dot-gemini', p.gemini], ['dot-gitlab', p.gitlab]].forEach(([id, mode]) => {
+            const el = $(id); if (!el) return;
+            el.className = 'w-2 h-2 rounded-full ' + (DOT[mode] || 'bg-slate-600');
+            el.title = mode || 'unknown';
+        });
+        setText('ws-data-source', s.data_source || '—');
+    }
+
+    // ── Interventions table (flush + redraw, empty-state vector) ────────
+    function actionBadge(row) {
+        if (row.mr_url || row.action === 'Model deployed') {
+            const label = row.mr_iid ? ('Deployed !' + esc(row.mr_iid)) : 'Model deployed';
+            return row.mr_url
+                ? '<a href="' + esc(row.mr_url) + '" target="_blank" rel="noopener" class="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-md bg-indigo-500/10 text-indigo-300 border border-indigo-500/20 hover:bg-indigo-500/20"><i data-lucide="git-merge" class="text-xs"></i> ' + label + '</a>'
+                : '<span class="text-xs px-2 py-0.5 rounded-md bg-indigo-500/10 text-indigo-300 border border-indigo-500/20">' + label + '</span>';
+        }
+        if (row.is_significant) return '<span class="text-xs px-2 py-0.5 rounded-md bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">Validated</span>';
+        return '<span class="text-xs px-2 py-0.5 rounded-md bg-slate-500/10 text-slate-400 border border-slate-500/20">Rejected</span>';
+    }
+    function emptyStateRow() {
+        return '<tr><td colspan="5" class="px-4 py-12 text-center">' +
+            '<svg width="120" height="80" viewBox="0 0 120 80" fill="none" class="mx-auto mb-3 opacity-60">' +
+            '<rect x="14" y="20" width="92" height="46" rx="6" stroke="#334155" stroke-width="2"/>' +
+            '<line x1="14" y1="34" x2="106" y2="34" stroke="#334155" stroke-width="2"/>' +
+            '<circle cx="22" cy="27" r="2" fill="#475569"/><circle cx="30" cy="27" r="2" fill="#475569"/>' +
+            '<line x1="26" y1="46" x2="60" y2="46" stroke="#1f2937" stroke-width="3" stroke-linecap="round"/>' +
+            '<line x1="26" y1="55" x2="80" y2="55" stroke="#1f2937" stroke-width="3" stroke-linecap="round"/>' +
+            '<path d="M86 50 l8 8 m0 -8 l-8 8" stroke="#6366f1" stroke-width="2" stroke-linecap="round"/></svg>' +
+            '<div class="text-slate-400 text-sm font-medium">No interventions yet</div>' +
+            '<div class="text-slate-600 text-xs mt-1">The agent will populate this as it validates hypotheses.</div></td></tr>';
+    }
+    function tableSkeletonRows() {
+        let out = '';
+        for (let i = 0; i < 3; i++) {
+            out += '<tr class="border-b border-white/5">' +
+                '<td class="px-4 py-3"><div class="skeleton h-3 w-24">--</div></td>'.repeat(1) +
+                '<td class="px-4 py-3"><div class="skeleton h-3 w-28">--</div></td>' +
+                '<td class="px-4 py-3"><div class="skeleton h-3 w-20">--</div></td>' +
+                '<td class="px-4 py-3"><div class="skeleton h-3 w-16">--</div></td>' +
+                '<td class="px-4 py-3"><div class="skeleton h-3 w-20">--</div></td></tr>';
+        }
+        return out;
+    }
+    async function hydrateInterventions() {
+        const tbody = $('ws-interventions-body'); if (!tbody) return;
+        const data = await getJSON(API.interventions);
+        const rows = data.interventions || [];
+        if (!rows.length) { tbody.innerHTML = emptyStateRow(); icons(); return; }
+        tbody.innerHTML = rows.map((row) =>
+            '<tr class="border-b border-white/5 hover:bg-white/[0.02] transition-colors">' +
+            '<td class="px-4 py-3 text-slate-400 font-mono text-xs whitespace-nowrap">' + esc(fmtWhen(row.created_at)) + '</td>' +
+            '<td class="px-4 py-3 text-slate-200">' + esc(row.driver || '—') + '</td>' +
+            '<td class="px-4 py-3 text-slate-300">' + esc(row.outcome || '—') + '</td>' +
+            '<td class="px-4 py-3 font-mono text-xs ' + (row.is_significant ? 'text-emerald-400' : 'text-slate-400') + '">' + fmtP(row.p_value) + '</td>' +
+            '<td class="px-4 py-3">' + actionBadge(row) + '</td></tr>'
+        ).join('');
+        icons();
+    }
+
+    // ── Deployment card + generated code ───────────────────────────────
+    async function hydrateDeploymentCard() {
+        const data = await getJSON(API.deployments + '?limit=1');
+        const d = (data.deployments || [])[0];
+        const sub = $('ws-deploy-subtitle');
+        if (!d) {
+            sub.classList.remove('skeleton'); sub.textContent = 'Waiting for the first validated discovery…';
+            setText('ws-deploy-branch', '—'); setText('ws-deploy-asset', '—');
+            return;
+        }
+        sub.classList.remove('skeleton');
+        sub.textContent = d.mode === 'live' ? 'Merge request opened on GitLab.' : 'Local deployment (set AUTO_DEPLOY=true to ship to GitLab).';
+        setText('ws-deploy-branch', d.branch || '—');
+        const link = $('ws-deploy-mr-link');
+        if (link && d.mr_url) {
+            link.href = d.mr_url;
+            link.className = 'btn w-full bg-white/[0.04] hover:bg-white/[0.08] border border-slate-600 text-white py-2 rounded-lg text-sm flex items-center justify-center gap-2';
+            setText('ws-deploy-mr-label', 'View Merge Request !' + d.mr_iid);
+        }
+    }
+    async function hydrateModel() {
+        const data = await getJSON(API.latestModel);
+        if (!data.script) return;
+        const block = $('ws-code-block'), pre = $('ws-code-pre'), sk = $('ws-code-skeleton');
+        if (block) {
+            block.textContent = data.script;
+            block.removeAttribute('data-highlighted');
+            block.className = 'language-python';
+            try { if (window.hljs) hljs.highlightElement(block); } catch (_) {}
+            if (pre) pre.classList.remove('hidden');
+            if (sk) sk.classList.add('hidden');
+        }
+        if (data.filename) { setText('ws-code-filename', data.filename); setText('ws-deploy-asset', data.filename); }
+    }
+
+    // ── Hypothesis Log + Deployments views ─────────────────────────────
+    function sigBadge(ok) {
+        return ok
+            ? '<span class="text-xs px-2 py-0.5 rounded-md bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">SIGNIFICANT</span>'
+            : '<span class="text-xs px-2 py-0.5 rounded-md bg-slate-500/10 text-slate-400 border border-slate-500/20">REJECTED</span>';
+    }
+    function modeBadge(mode) {
+        return mode === 'live'
+            ? '<span class="text-xs px-1.5 py-0.5 rounded-md bg-indigo-500/10 text-indigo-300 border border-indigo-500/20">LIVE</span>'
+            : '<span class="text-xs px-1.5 py-0.5 rounded-md bg-slate-600/20 text-slate-400 border border-slate-600/30">LOCAL</span>';
+    }
+    async function hydrateHypotheses() {
+        const body = $('ws-hypotheses-body');
+        body.innerHTML = '<div class="skeleton h-24 rounded-2xl">--</div>'.repeat(3);
+        try {
+            const data = await getJSON(API.hypotheses);
+            const rows = data.hypotheses || [];
+            State.counts.hypotheses = rows.length; refreshNavCounts();
+            if (!rows.length) { body.innerHTML = emptyCard('No hypotheses recorded yet.', 'The agent populates this as it runs.'); return; }
+            body.innerHTML = rows.map((h) => {
+                const statName = (h.metadata && h.metadata.test) ? h.metadata.test : 'test';
+                return '<div class="glass p-4 lift">' +
+                    '<div class="flex items-center justify-between mb-2"><div class="flex items-center gap-2">' + sigBadge(h.is_significant) + ' ' + modeBadge(h.data_mode) + '</div>' +
+                    '<span class="text-xs text-slate-500 font-mono">' + esc(fmtWhen(h.created_at)) + '</span></div>' +
+                    '<p class="text-sm text-slate-200 mb-3">' + esc(h.statement) + '</p>' +
+                    '<div class="grid grid-cols-4 gap-2 text-xs">' +
+                    '<div><div class="text-slate-500">test</div><div class="text-slate-200 font-mono">' + esc(statName) + '</div></div>' +
+                    '<div><div class="text-slate-500">p-value</div><div class="text-slate-200 font-mono">' + fmtP(h.p_value) + '</div></div>' +
+                    '<div><div class="text-slate-500">statistic</div><div class="text-slate-200 font-mono">' + (h.statistic != null ? Number(h.statistic).toFixed(2) : '—') + '</div></div>' +
+                    '<div><div class="text-slate-500">n</div><div class="text-slate-200 font-mono">' + (h.sample_size != null ? Number(h.sample_size).toLocaleString() : '—') + '</div></div>' +
+                    '</div></div>';
+            }).join('');
+        } catch (e) { body.innerHTML = '<div class="text-red-400 text-sm">Failed to load.</div>'; }
+    }
+    async function hydrateDeployments() {
+        const body = $('ws-deployments-body');
+        body.innerHTML = '<div class="skeleton h-24 rounded-2xl">--</div>'.repeat(2);
+        try {
+            const data = await getJSON(API.deployments);
+            const rows = data.deployments || [];
+            State.counts.deployments = rows.length; refreshNavCounts();
+            if (!rows.length) { body.innerHTML = emptyCard('No deployments yet.', 'Significant hypotheses open a merge request here.'); return; }
+            body.innerHTML = rows.map((d) =>
+                '<div class="glass p-4 lift">' +
+                '<div class="flex items-center justify-between mb-2"><div class="flex items-center gap-2 text-orange-400"><i data-lucide="git-merge" class="text-sm"></i> <span class="font-mono text-sm">!' + esc(d.mr_iid) + '</span> ' + modeBadge(d.mode) + '</div>' +
+                '<span class="text-xs text-slate-500 font-mono">' + esc(fmtWhen(d.created_at)) + '</span></div>' +
+                '<p class="text-sm text-slate-200 mb-2">' + esc(d.title || d.hypothesis_statement) + '</p>' +
+                '<div class="text-xs text-slate-500 mb-2 font-mono">' + esc(d.branch || '') + '</div>' +
+                (d.mr_url ? '<a href="' + esc(d.mr_url) + '" target="_blank" rel="noopener" class="text-xs text-indigo-400 hover:text-indigo-300 inline-flex items-center gap-1"><i data-lucide="external-link" class="text-xs"></i> View Merge Request</a>' : '') +
+                '</div>'
+            ).join('');
+            icons();
+        } catch (e) { body.innerHTML = '<div class="text-red-400 text-sm">Failed to load.</div>'; }
+    }
+    function emptyCard(title, sub) {
+        return '<div class="glass p-10 text-center"><i data-lucide="inbox" class="text-3xl text-slate-600"></i>' +
+            '<div class="text-slate-300 text-sm font-medium mt-3">' + esc(title) + '</div>' +
+            '<div class="text-slate-600 text-xs mt-1">' + esc(sub) + '</div></div>';
+    }
+    function refreshNavCounts() {
+        setText('nav-count-hyp', State.counts.hypotheses);
+        setText('nav-count-dep', State.counts.deployments);
+    }
+
+    // ── Master hydration ───────────────────────────────────────────────
+    async function hydrateAll() {
+        await Promise.allSettled([
+            hydrateMetrics(), hydrateStatus(), hydrateInsight(),
+            hydrateInterventions(), hydrateDeploymentCard(), hydrateModel(),
+            hydrateDataset(),
+        ]);
+        // keep nav counts fresh without forcing a view switch
+        try {
+            const [h, d] = await Promise.all([getJSON(API.hypotheses + '?limit=200'), getJSON(API.deployments + '?limit=200')]);
+            State.counts.hypotheses = (h.hypotheses || []).length;
+            State.counts.deployments = (d.deployments || []).length;
+            refreshNavCounts();
+        } catch (_) {}
+    }
+
+    // ── Dataset card + upload/switch (bring your own data) ─────────────
+    async function hydrateDataset() {
+        try {
+            const d = await getJSON(API.dataset);
+            const fname = (String(d.source || '').split('/').pop()) || d.source || '—';
+            setText('ds-name', fname);
+            const modeEl = $('ds-mode');
+            if (modeEl) {
+                modeEl.textContent = d.mode === 'live' ? 'LIVE' : 'LOCAL';
+                modeEl.className = 'text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded-md border ' +
+                    (d.mode === 'live' ? 'bg-indigo-500/10 text-indigo-300 border-indigo-500/20' : 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20');
+            }
+            setText('ds-meta', fmtInt(d.row_count) + ' rows · ' + d.n_columns + ' columns' + (d.target ? ' · target: ' + d.target : ''));
+            const t = $('ds-targets');
+            if (t) {
+                const chips = [];
+                if (d.target) chips.push('<span class="text-xs px-2 py-0.5 rounded-md bg-emerald-500/10 text-emerald-300 border border-emerald-500/20 inline-flex items-center gap-1"><i data-lucide="target" class="text-xs"></i> Target: ' + esc(d.target) + '</span>');
+                (d.candidate_targets || []).filter((x) => x !== d.target).slice(0, 4).forEach((x) =>
+                    chips.push('<span class="text-xs px-2 py-0.5 rounded-md bg-white/[0.04] text-slate-400 border border-white/10">' + esc(x) + '</span>'));
+                t.innerHTML = chips.join('');
+            }
+            renderMissionExamples(d.suggestions);
+            icons();
+        } catch (_) {}
+        await populateDatasetSelect();
+    }
+    async function populateDatasetSelect() {
+        try {
+            const data = await getJSON(API.datasets);
+            const sel = $('ds-select'); if (!sel) return;
+            const dsName = ($('ds-name') || {}).textContent || '';
+            sel.innerHTML = (data.datasets || []).map((ds) =>
+                '<option value="' + esc(ds.path) + '"' + (ds.name === dsName ? ' selected' : '') + '>' +
+                esc(ds.name) + (ds.uploaded ? ' · uploaded' : '') + ' · ' + ds.size_kb + ' KB</option>'
+            ).join('');
+        } catch (_) {}
+    }
+    async function switchDataset(req, done) {
+        try {
+            const res = await req();
+            if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.error || 'failed'); }
+            toast('Dataset switched — the agent is re-profiling it.');
+            await hydrateDataset();
+            await hydrateAll();
+        } catch (e) {
+            toast('Could not switch dataset: ' + e.message);
+        } finally { if (done) done(); }
+    }
+    function wireDataset() {
+        const sel = $('ds-select');
+        if (sel) sel.addEventListener('change', () => {
+            const path = sel.value; if (!path) return;
+            switchDataset(() => fetch(API.selectDataset, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ path }) }));
+        });
+        const up = $('ds-upload');
+        if (up) up.addEventListener('change', () => {
+            const f = up.files && up.files[0]; if (!f) return;
+            const fd = new FormData(); fd.append('file', f);
+            const label = $('ds-upload-label'); const orig = label ? label.textContent : '';
+            if (label) label.textContent = 'Uploading…';
+            switchDataset(
+                () => fetch(API.uploadDataset, { method: 'POST', body: fd }),
+                () => { if (label) label.textContent = orig; up.value = ''; }
+            );
+        });
+    }
+
+    // ── Mission Control + Force Sync ───────────────────────────────────
+    // Example prompts are derived from the ACTUAL dataset (see hydrateDataset),
+    // so they fit any domain — never a hard-coded churn question.
+    const FALLBACK_EXAMPLES = ['What is the strongest relationship in this dataset?'];
+    function renderMissionExamples(list) {
+        const wrap = $('mission-examples'), input = $('mission-input');
+        if (!wrap) return;
+        const items = (list && list.length) ? list : FALLBACK_EXAMPLES;
+        wrap.innerHTML = '<span class="text-xs text-slate-500 mr-1">Try:</span>' + items.map((ex) =>
+            '<button type="button" class="mission-example text-xs bg-white/[0.04] hover:bg-white/[0.08] border border-white/5 text-slate-300 px-2.5 py-1 rounded-full transition-colors">' + esc(ex) + '</button>'
+        ).join('');
+        wrap.querySelectorAll('.mission-example').forEach((b) => b.addEventListener('click', () => { if (input) { input.value = b.textContent.trim(); input.focus(); } }));
+    }
+    function wireMission() {
+        renderMissionExamples(FALLBACK_EXAMPLES);
+        const btn = $('deploy-agent'), label = $('deploy-agent-label'), input = $('mission-input'), status = $('mission-status');
+        btn.addEventListener('click', async () => {
+            const goal = (input.value || '').trim();
+            if (!goal) { status.textContent = 'Enter a mission goal first.'; status.className = 'text-xs text-amber-400'; input.focus(); return; }
+            btn.disabled = true; label.textContent = 'Deploying…';
+            window.AppState.missionActive = true;
+            status.textContent = 'Dispatching mission to the agent…'; status.className = 'text-xs text-indigo-300';
+            try {
+                const res = await fetch(API.run, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ user_goal: goal }) });
+                const data = await res.json().catch(() => ({}));
+                if (!res.ok || data.status === 'unavailable') throw new Error(data.detail || 'Agent unavailable');
+                status.textContent = 'Mission accepted — watch the Active Agent Stream.'; status.className = 'text-xs text-emerald-400';
+            } catch (e) {
+                status.textContent = 'Failed to dispatch mission. Is the agent running?'; status.className = 'text-xs text-red-400';
+            } finally {
+                setTimeout(() => { btn.disabled = false; label.textContent = 'Deploy Agent'; window.AppState.missionActive = false; }, 1500);
+            }
+        });
+    }
+    function wireForceSync() {
+        const btn = $('force-sync');
+        btn.addEventListener('click', async () => {
+            btn.disabled = true;
+            try { await fetch(API.run, { method: 'POST' }); } catch (_) {}
+            finally { setTimeout(() => { btn.disabled = false; }, 1500); }
+        });
+    }
+    function wireCodeCopy() {
+        const btn = $('ws-code-copy');
+        btn.addEventListener('click', () => {
+            navigator.clipboard?.writeText($('ws-code-block')?.textContent || '');
+            btn.innerHTML = '<i data-lucide="check" class="text-sm text-emerald-400"></i>'; icons();
+            setTimeout(() => { btn.innerHTML = '<i data-lucide="copy" class="text-sm"></i>'; icons(); }, 1200);
+        });
+    }
+
+    /* ════════════════════════════════════════════════════════════════════
+       Live WebSocket terminal + instant signal response
+       ════════════════════════════════════════════════════════════════════ */
+    function connectStream() {
+        const feed = $('ws-stream'), badge = $('ws-stream-status');
+        const LEVELS = {
+            info:       { border: 'border-l-indigo-500',  label: 'text-indigo-300',  icon: 'arrow-right' },
+            warning:    { border: 'border-l-amber-500',   label: 'text-amber-400',   icon: 'alert-triangle' },
+            error:      { border: 'border-l-red-500',     label: 'text-red-400',     icon: 'x-circle' },
+            hypothesis: { border: 'border-l-violet-500',  label: 'text-violet-300',  icon: 'lightbulb', bg: 'bg-violet-900/10' },
+            success:    { border: 'border-l-emerald-500', label: 'text-emerald-400', icon: 'cpu', bg: 'bg-emerald-900/10' },
+        };
+        const STAGE_STATUS = { trigger: 'INGESTING', explore: 'EXPLORING', reason: 'REASONING', validate: 'VALIDATING', deploy: 'DEPLOYING', system: 'IDLE' };
+
+        function setStatus(text, ok) {
+            badge.textContent = text;
+            badge.className = 'text-xs font-mono px-2 py-1 rounded-md border ' +
+                (ok ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' : 'bg-red-500/10 text-red-400 border-red-500/20');
+        }
+        function standby() {
+            feed.innerHTML = '<div id="ws-standby" class="flex items-center gap-2 text-slate-500 text-xs italic">' +
+                '<span class="inline-block w-1.5 h-1.5 rounded-full bg-slate-600 animate-pulse"></span>Agent standing by — awaiting telemetry…</div>';
+        }
+        function typeMessage(el, text) {
+            return new Promise((resolve) => {
+                el.classList.add('type-cursor'); let i = 0;
+                const tick = () => {
+                    if (i <= text.length) { el.textContent = text.slice(0, i); i++; feed.scrollTop = feed.scrollHeight; setTimeout(tick, 10); }
+                    else { el.classList.remove('type-cursor'); resolve(); }
+                };
+                tick();
+            });
+        }
+        async function renderEvent(evt) {
+            window.AppState.logs.push(evt);
+            const sb = $('ws-standby'); if (sb) sb.remove();
+            const style = LEVELS[evt.level] || LEVELS.info;
+            const wrap = document.createElement('div');
+            wrap.className = 'agent-log p-3 rounded-lg text-slate-300 ' + style.border + ' ' + (style.bg || '');
+            const header = document.createElement('div');
+            header.className = style.label + ' text-xs mb-1 flex items-center gap-1.5 flex-wrap';
+            const sim = evt.mode === 'simulation' ? '<span class="text-slate-500 border border-slate-600 rounded px-1 ml-1">SIM</span>' : '';
+            header.innerHTML = '<span class="opacity-70">[' + esc(evt.timestamp) + ']</span> <span class="font-semibold">' + esc(evt.source) + '</span>' +
+                '<i data-lucide="' + style.icon + '" class="text-xs"></i><span class="uppercase">' + esc(evt.stage) + '</span>' + sim;
+            const body = document.createElement('div');
+            wrap.appendChild(header); wrap.appendChild(body); feed.appendChild(wrap);
+            feed.scrollTop = feed.scrollHeight; icons();
+            setStatus(STAGE_STATUS[evt.stage] || 'ACTIVE', true);
+            await typeMessage(body, evt.message);
+
+            // TASK C — Instant Signal Response: GITLAB MCP / execution finish
+            // frames immediately dispatch a global update to repopulate the
+            // code segments and intervention (customer) lists simultaneously.
+            const isGitlab = (evt.source || '').toUpperCase().includes('GITLAB');
+            const isFinish = (evt.stage === 'deploy' && evt.level === 'success') ||
+                             (evt.stage === 'system');
+            if (isGitlab || isFinish) document.dispatchEvent(new CustomEvent('epiphany:cycle-updated'));
+
+            while (feed.children.length > 40) feed.removeChild(feed.firstChild);
+        }
+        let chain = Promise.resolve();
+        const enqueue = (evt) => { chain = chain.then(() => renderEvent(evt)); };
+
+        function connect() {
+            const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+            const ws = new WebSocket(proto + '://' + location.host + API.ws);
+            ws.onopen = () => { if (!$('ws-standby') && !feed.children.length) standby(); setStatus('ONLINE', true); };
+            ws.onmessage = (e) => { try { enqueue(JSON.parse(e.data)); } catch (_) {} };
+            ws.onclose = () => { setStatus('RECONNECTING', false); setTimeout(connect, 2000); };
+            ws.onerror = () => ws.close();
+        }
+        standby();
+        connect();
+    }
+
+    // Render initial Lucide icons for the auth gate immediately.
+    document.addEventListener('DOMContentLoaded', icons);
+    </script>
+</body>
+</html>

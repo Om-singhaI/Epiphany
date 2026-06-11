@@ -1,0 +1,35 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# Environment / secrets — NEVER commit these
+.env
+*.env
+epiphany_connections.json
+# Google service-account keys (and any credential exports)
+epiphany-*.json
+*-service-account*.json
+service-account*.json
+gcp-*.json
+*.pem
+*.key
+credentials*.csv
+
+# Databases
+epiphany.db
+epiphany.db.bak-*
+*.sqlite
+*.sqlite3
+
+# Generated outputs (real trained models + findings reports + user uploads)
+artifacts/
+reports/
+data/uploads/
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
