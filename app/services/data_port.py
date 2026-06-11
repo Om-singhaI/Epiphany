@@ -243,18 +243,24 @@ class DataPort:
         self._settings = settings
         self._elastic = elastic_client
         self._frame: pd.DataFrame | None = None
+        self._loaded: bool = False
         self._profile: DataProfile | None = None
         self._mode: str = "local"
-        self._source: str = settings.data_csv_path
+        self._source: str = settings.data_csv_path or ""
 
     # ── Loading ─────────────────────────────────────────────────────────
-    async def frame(self) -> pd.DataFrame:
-        """Return the cached real DataFrame, loading it on first use."""
-        if self._frame is None:
+    async def frame(self) -> pd.DataFrame | None:
+        """Return the cached real DataFrame (or None if no dataset yet)."""
+        if not self._loaded:
             self._frame = await self._load()
+            self._loaded = True
         return self._frame
 
-    async def _load(self) -> pd.DataFrame:
+    async def has_data(self) -> bool:
+        """Whether a dataset is available to analyse (file or live Elastic)."""
+        return (await self.frame()) is not None
+
+    async def _load(self) -> pd.DataFrame | None:
         # A user-supplied local dataset always wins over the configured index.
         prefer_local = getattr(self._settings, "prefer_local_data", False)
         # Prefer live Elastic data when a client is available and enabled.
@@ -268,8 +274,14 @@ class DataPort:
                 self._mode = "live"
                 self._source = self._settings.elastic_index
                 return _coerce_dtypes(df)
-            logger.info("Elastic returned no rows; falling back to local dataset.")
+            logger.info("Elastic returned no rows; trying local dataset.")
         df = self._load_from_file()
+        if df is None:
+            # No dataset configured/available — empty workspace until the user
+            # uploads a file or connects a source.
+            self._mode = "local"
+            self._source = ""
+            return None
         self._mode = "local"
         self._source = self._settings.data_csv_path
         return _coerce_dtypes(df)
@@ -284,14 +296,14 @@ class DataPort:
             logger.warning("Elastic load failed (%s); using local dataset.", exc)
             return None
 
-    def _load_from_file(self) -> pd.DataFrame:
-        path = Path(self._settings.data_csv_path)
+    def _load_from_file(self) -> pd.DataFrame | None:
+        path_str = (self._settings.data_csv_path or "").strip()
+        if not path_str:
+            return None  # no dataset configured — empty workspace
+        path = Path(path_str)
         if not path.exists():
-            raise FileNotFoundError(
-                f"No data source available: Elastic is not configured and "
-                f"DATA_CSV_PATH ('{path}') does not exist. Point DATA_CSV_PATH "
-                f"at a CSV or Parquet file to analyse."
-            )
+            logger.info("DATA_CSV_PATH '%s' not found; starting empty.", path)
+            return None
         if path.suffix.lower() in {".parquet", ".pq"}:
             return pd.read_parquet(path)
         return pd.read_csv(path)
@@ -305,10 +317,12 @@ class DataPort:
         return self._source
 
     # ── Profiling ───────────────────────────────────────────────────────
-    async def profile(self) -> DataProfile:
-        """Profile every column of the real dataset (cached)."""
+    async def profile(self) -> DataProfile | None:
+        """Profile every column of the real dataset (cached); None if no data."""
         if self._profile is None:
             df = await self.frame()
+            if df is None:
+                return None
             cols = [profile_column(df[name], name) for name in df.columns]
             self._profile = DataProfile(
                 source=self._source,
@@ -328,7 +342,7 @@ class DataPort:
         real frame so the buckets reflect genuine data.
         """
         df = await self.frame()
-        if dimension not in df.columns or metric not in df.columns:
+        if df is None or dimension not in df.columns or metric not in df.columns:
             return {"buckets": [], "dimension": dimension, "metric": metric}
         grouped = df.groupby(dimension, dropna=True)[metric]
         agg_series = getattr(grouped, agg)()
@@ -357,6 +371,8 @@ class DataPort:
         """
         df = await self.frame()
         prof = await self.profile()
+        if df is None or prof is None:
+            return []
         target_col = prof.column(target)
         if target_col is None or target not in df.columns:
             return []
@@ -404,6 +420,8 @@ class DataPort:
     async def column_values(self, *names: str) -> dict[str, list[Any]]:
         """Return real, row-aligned values for the named columns (dropna joined)."""
         df = await self.frame()
+        if df is None:
+            return {}
         present = [n for n in names if n in df.columns]
         subset = df[present].dropna()
         return {n: subset[n].tolist() for n in present}
@@ -418,7 +436,7 @@ class DataPort:
         returns mean-target-per-category.
         """
         df = await self.frame()
-        if feature not in df.columns or target not in df.columns:
+        if df is None or feature not in df.columns or target not in df.columns:
             return {"points": [], "mode": self._mode}
         sub = df[[feature, target]].dropna()
         if sub.empty:
@@ -457,8 +475,14 @@ class DataPort:
 
     # ── Dataset summary (powers the UI's dataset card + suggestions) ────
     async def summary(self) -> dict[str, Any]:
-        """Return a domain-agnostic snapshot of the loaded dataset."""
+        """Return a domain-agnostic snapshot of the loaded dataset (or empty)."""
         prof = await self.profile()
+        if prof is None:
+            return {
+                "source": None, "mode": self._mode, "row_count": 0,
+                "n_columns": 0, "target": None, "candidate_targets": [],
+                "columns": [], "suggestions": [], "no_data": True,
+            }
         targets = prof.candidate_targets()
         return {
             "source": prof.source,

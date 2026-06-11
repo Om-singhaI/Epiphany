@@ -668,6 +668,16 @@ class AgentOrchestrator:
             logger.info("run_cycle called while a cycle is already active.")
             return {"status": "busy"}
 
+        # No dataset yet → nothing to analyse. Prompt the user to provide data.
+        if not await self.data.has_data():
+            await self._emit(
+                "system", "ORCHESTRATOR", "warning",
+                "No dataset connected yet. Upload a CSV/Parquet or connect Elastic "
+                "to begin — then I'll start investigating.",
+                "local",
+            )
+            return {"status": "idle", "detail": "no dataset connected"}
+
         self.user_goal = user_goal
         if user_goal:
             goal = user_goal
@@ -776,7 +786,9 @@ class AgentOrchestrator:
         )
         cycle = 0
         while True:
-            goal = await self._rotating_goal(cycle)
-            await self.run_cycle(user_goal=goal, allow_adk=False)
-            cycle += 1
+            # Idle quietly until the user provides a dataset; then investigate.
+            if await self.data.has_data():
+                goal = await self._rotating_goal(cycle)
+                await self.run_cycle(user_goal=goal, allow_adk=False)
+                cycle += 1
             await asyncio.sleep(interval)

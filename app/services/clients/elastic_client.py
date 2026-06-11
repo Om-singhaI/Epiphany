@@ -128,6 +128,9 @@ class ElasticMcpToolset:
     async def get_database_schema(self) -> dict[str, Any]:
         """MCP tool: list the dataset's fields and inferred analytical roles."""
         profile = await self._data.profile()
+        if profile is None:
+            return {"fields": [], "row_count": 0, "no_data": True,
+                    "note": "No dataset connected yet."}
         return profile.as_dict()
 
     async def execute_aggregation(

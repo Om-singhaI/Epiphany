@@ -55,12 +55,12 @@ tools run as a direct pipeline — so the loop always completes.
   (denylist of `os`/`subprocess`/`eval`/…; allowlist of data-science libs) and
   executed in a hardened, network-isolated, resource-limited subprocess.
 
-## Graceful degradation — anyone can use it
+## Bring your own data — anyone can use it
 
-Every external provider is **optional**. With none configured, Epiphany analyses
-a real **local dataset** (`DATA_CSV_PATH`, default `data/train.csv`) and phrases
-its own hypotheses with a data-driven heuristic. Each credential you add simply
-upgrades one step:
+Epiphany ships with **no sample data**. A new user starts with an **empty
+workspace** and either **uploads a CSV/Parquet** or **connects a source** — then
+the agent begins automatically on *their* data. Every external provider is
+**optional**; each credential you add simply upgrades one step:
 
 | You add…            | …and that step becomes                              |
 |---------------------|-----------------------------------------------------|
@@ -125,17 +125,17 @@ logs. Three ways to give it data:
 1. **Upload in the app** — the dashboard's **dataset card** has an *Upload data*
    button (CSV/Parquet). The agent re-profiles and starts investigating it
    instantly.
-2. **Switch datasets** — pick any file under `./data` from the dataset dropdown.
-3. **Point at a path** — `DATA_CSV_PATH=/path/to/your.csv uvicorn app.main:app`.
+2. **Point at a path** — `DATA_CSV_PATH=/path/to/your.csv uvicorn app.main:app`.
+3. **Connect Elastic** — from the Connections page, to analyse a live index.
 
-Bundled samples demonstrate the range (different domains *and* different test
-types):
+It adapts the **method to the data**, automatically — for example:
 
-| Dataset | Domain | Target | Picks |
-|---|---|---|---|
-| `data/train.csv` | SaaS customers | `Churn` (binary) | t-test → classifier |
-| `data/wine_cultivars.csv` | Wine chemistry | `wine_class` (3-class) | ANOVA → classifier |
-| `data/diabetes_progression.csv` | Health | `disease_progression` (numeric) | correlation → regression |
+| If your target is… | …it picks |
+|---|---|
+| a 2-class label (e.g. converted yes/no) | Welch's **t-test** → classifier |
+| a 3+-class category (e.g. product tier) | **ANOVA** → classifier |
+| a continuous number (e.g. price) | **Pearson/Spearman** → regression |
+| two categories (e.g. region × outcome) | **Chi-Square** |
 
 ### Connect providers from the UI
 
@@ -191,7 +191,7 @@ Epiphany/
 │       ├── report.py                # local Markdown/HTML findings report
 │       ├── repository.py            # SQLite history of every cycle
 │       └── clients/                 # Fivetran, Elastic, Gemini, GitLab
-├── data/train.csv                   # bundled real dataset (swap for your own)
+├── data/uploads/                    # user-uploaded datasets (bring your own)
 ├── artifacts/                       # trained models (.pkl) + metrics (.json)
 ├── reports/                         # findings reports (.md / .html)
 ├── .env.example                     # configuration template

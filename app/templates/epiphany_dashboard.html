@@ -432,7 +432,7 @@
                     <p class="text-xs text-slate-400 mb-4">Describe a business question in plain language. The agent explores your data, forms a hypothesis, validates it, and ships a model.</p>
                     <textarea id="mission-input" rows="2"
                         class="field w-full bg-slate-900/60 border border-slate-700 outline-none rounded-xl px-4 py-3 text-sm text-slate-100 placeholder-slate-500 resize-none"
-                        placeholder="e.g. Which factor most strongly predicts churn?"></textarea>
+                        placeholder="e.g. What most strongly drives the key outcome in my data?"></textarea>
                     <div class="flex flex-wrap items-center gap-2 mt-3" id="mission-examples"></div>
                     <div class="flex items-center justify-between gap-3 mt-4">
                         <div id="mission-status" class="text-xs text-slate-500"></div>
@@ -687,7 +687,7 @@
     /* ════════════════════════════════════════════════════════════════════
        TASK B — Global reactive state engine
        ════════════════════════════════════════════════════════════════════ */
-    window.AppState = { authenticated: false, missionActive: false, currentInsight: null, logs: [] };
+    window.AppState = { authenticated: false, missionActive: false, currentInsight: null, logs: [], hasData: false };
     const State = {
         view: 'dashboard',
         chart: null,
@@ -1314,24 +1314,37 @@
     async function hydrateDataset() {
         try {
             const d = await getJSON(API.dataset);
-            const fname = (String(d.source || '').split('/').pop()) || d.source || '—';
-            setText('ds-name', fname);
+            const noData = !!d.no_data || !d.source;
+            window.AppState.hasData = !noData;
             const modeEl = $('ds-mode');
-            if (modeEl) {
-                modeEl.textContent = d.mode === 'live' ? 'LIVE' : 'LOCAL';
-                modeEl.className = 'text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded-md border ' +
-                    (d.mode === 'live' ? 'bg-indigo-500/10 text-indigo-300 border-indigo-500/20' : 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20');
-            }
-            setText('ds-meta', fmtInt(d.row_count) + ' rows · ' + d.n_columns + ' columns' + (d.target ? ' · target: ' + d.target : ''));
             const t = $('ds-targets');
-            if (t) {
-                const chips = [];
-                if (d.target) chips.push('<span class="text-xs px-2 py-0.5 rounded-md bg-emerald-500/10 text-emerald-300 border border-emerald-500/20 inline-flex items-center gap-1"><i data-lucide="target" class="text-xs"></i> Target: ' + esc(d.target) + '</span>');
-                (d.candidate_targets || []).filter((x) => x !== d.target).slice(0, 4).forEach((x) =>
-                    chips.push('<span class="text-xs px-2 py-0.5 rounded-md bg-white/[0.04] text-slate-400 border border-white/10">' + esc(x) + '</span>'));
-                t.innerHTML = chips.join('');
+            if (noData) {
+                setText('ds-name', 'No dataset loaded');
+                if (modeEl) {
+                    modeEl.textContent = 'EMPTY';
+                    modeEl.className = 'text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded-md border bg-slate-600/20 text-slate-400 border-slate-600/30';
+                }
+                setText('ds-meta', 'Upload a CSV/Parquet, or connect Elastic — then the agent starts automatically.');
+                if (t) t.innerHTML = '<span class="text-xs px-2 py-0.5 rounded-md bg-indigo-500/10 text-indigo-300 border border-indigo-500/20 inline-flex items-center gap-1"><i data-lucide="arrow-up" class="text-xs"></i> Use “Upload data” above to begin</span>';
+                renderMissionExamples([]);
+            } else {
+                const fname = (String(d.source || '').split('/').pop()) || d.source;
+                setText('ds-name', fname);
+                if (modeEl) {
+                    modeEl.textContent = d.mode === 'live' ? 'LIVE' : 'LOCAL';
+                    modeEl.className = 'text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded-md border ' +
+                        (d.mode === 'live' ? 'bg-indigo-500/10 text-indigo-300 border-indigo-500/20' : 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20');
+                }
+                setText('ds-meta', fmtInt(d.row_count) + ' rows · ' + d.n_columns + ' columns' + (d.target ? ' · target: ' + d.target : ''));
+                if (t) {
+                    const chips = [];
+                    if (d.target) chips.push('<span class="text-xs px-2 py-0.5 rounded-md bg-emerald-500/10 text-emerald-300 border border-emerald-500/20 inline-flex items-center gap-1"><i data-lucide="target" class="text-xs"></i> Target: ' + esc(d.target) + '</span>');
+                    (d.candidate_targets || []).filter((x) => x !== d.target).slice(0, 4).forEach((x) =>
+                        chips.push('<span class="text-xs px-2 py-0.5 rounded-md bg-white/[0.04] text-slate-400 border border-white/10">' + esc(x) + '</span>'));
+                    t.innerHTML = chips.join('');
+                }
+                renderMissionExamples(d.suggestions);
             }
-            renderMissionExamples(d.suggestions);
             icons();
         } catch (_) {}
         await populateDatasetSelect();
@@ -1340,8 +1353,13 @@
         try {
             const data = await getJSON(API.datasets);
             const sel = $('ds-select'); if (!sel) return;
+            const items = data.datasets || [];
+            if (!items.length) {
+                sel.innerHTML = '<option value="" disabled selected>No datasets — upload one</option>';
+                return;
+            }
             const dsName = ($('ds-name') || {}).textContent || '';
-            sel.innerHTML = (data.datasets || []).map((ds) =>
+            sel.innerHTML = items.map((ds) =>
                 '<option value="' + esc(ds.path) + '"' + (ds.name === dsName ? ' selected' : '') + '>' +
                 esc(ds.name) + (ds.uploaded ? ' · uploaded' : '') + ' · ' + ds.size_kb + ' KB</option>'
             ).join('');
@@ -1396,6 +1414,7 @@
         btn.addEventListener('click', async () => {
             const goal = (input.value || '').trim();
             if (!goal) { status.textContent = 'Enter a mission goal first.'; status.className = 'text-xs text-amber-400'; input.focus(); return; }
+            if (!window.AppState.hasData) { status.textContent = 'Upload a dataset first, then run a mission.'; status.className = 'text-xs text-amber-400'; return; }
             btn.disabled = true; label.textContent = 'Deploying…';
             window.AppState.missionActive = true;
             status.textContent = 'Dispatching mission to the agent…'; status.className = 'text-xs text-indigo-300';

@@ -125,26 +125,27 @@ para(tf, "Safe.  Agent-generated code is AST-screened and run in a network-isola
 para(tf, "Deployed & usable.  Live on the web, real auth (Clerk), bring-your-own-data, graceful degradation.", 18, EMERALD, bold=True, bullet=True)
 
 # ── 5. Works on ANY dataset ──────────────────────────────────────────────────
-s = slide(); title(s, "FOR ANYONE", "Upload any CSV — it adapts the test and the model")
+s = slide(); title(s, "FOR ANYONE", "Bring any CSV — it adapts the test and the model")
 rows = [
-    ("Dataset", "Domain", "Target", "Test → Model", True),
-    ("train.csv", "SaaS customers", "Churn (binary)", "t-test → classifier", False),
-    ("wine_cultivars.csv", "Wine chemistry", "wine_class (3-class)", "ANOVA → classifier (94%)", False),
-    ("diabetes_progression.csv", "Healthcare", "progression (numeric)", "correlation → regression", False),
+    ("If your target is…", "…Epiphany automatically picks", True),
+    ("a 2-class label (e.g. converted)", "Welch's t-test  →  classifier", False),
+    ("a 3+-class category (e.g. tier)", "one-way ANOVA  →  classifier", False),
+    ("a continuous number (e.g. price)", "Pearson / Spearman  →  regression", False),
+    ("two categories (region × outcome)", "Chi-Square test of independence", False),
 ]
 y = 2.7
-for c0, c1, c2, c3, head in rows:
-    cols = [(c0, 3.3), (c1, 3.0), (c2, 3.2), (c3, 3.5)]
+for c0, c1, head in rows:
+    cols = [(c0, 5.6), (c1, 6.4)]
     x = 0.7
     for txt, w in cols:
         if head:
-            card(s, x, y, w - 0.1, 0.6, RGBColor(0x1E, 0x29, 0x3B))
-        tf = box(s, x + 0.12, y + 0.06, w - 0.2, 0.6)
-        para(tf, txt, 14 if head else 14, INDIGO if head else WHITE, bold=head, first=True)
+            card(s, x, y, w - 0.1, 0.62, RGBColor(0x1E, 0x29, 0x3B))
+        tf = box(s, x + 0.14, y + 0.08, w - 0.25, 0.6)
+        para(tf, txt, 15, INDIGO if head else WHITE, bold=head, first=True)
         x += w
-    y += 0.72
-tf = box(s, 0.7, 6.2, 12, 0.8)
-para(tf, "Same agent. Zero configuration. It picks the statistically correct method for whatever you give it.", 15, EMERALD, bold=True, first=True)
+    y += 0.78
+tf = box(s, 0.7, 6.4, 12, 0.8)
+para(tf, "No samples shipped — you upload your data and the agent auto-detects the target and the correct method.", 15, EMERALD, bold=True, first=True)
 
 # ── 6. Architecture / Google Cloud ───────────────────────────────────────────
 s = slide(); title(s, "ARCHITECTURE", "Built on Google Cloud's agentic stack", EMERALD)
@@ -159,10 +160,10 @@ para(tf, "Container-native — Dockerfile, honors $PORT, health checks: Cloud Ru
 # ── 7. Live demo ─────────────────────────────────────────────────────────────
 s = slide(); title(s, "LIVE DEMO", "See it think — in 90 seconds")
 tf = box(s, 0.8, 2.3, 11.8, 4)
-para(tf, "1.  Sign in (Clerk) → the dashboard's Active Agent Stream is already working autonomously.", 18, WHITE, bullet=True, first=True)
-para(tf, "2.  Switch churn → wine: it re-profiles and now chooses ANOVA + a 94% classifier.", 18, WHITE, bullet=True)
-para(tf, "3.  Run a mission in plain English → Gemini + ADK pick the tools live.", 18, WHITE, bullet=True)
-para(tf, "4.  Upload your own CSV → it works on your data too.", 18, WHITE, bullet=True)
+para(tf, "1.  Sign in (Clerk) → an empty workspace; upload a CSV to begin.", 18, WHITE, bullet=True, first=True)
+para(tf, "2.  The agent auto-detects the target and runs its loop live.", 18, WHITE, bullet=True)
+para(tf, "3.  Upload a different dataset → it switches the statistical test automatically.", 18, WHITE, bullet=True)
+para(tf, "4.  Run a mission in plain English → Gemini + ADK pick the tools live.", 18, WHITE, bullet=True)
 card(s, 0.8, 6.0, 11.7, 0.9, RGBColor(0x06, 0x2B, 0x22))
 tf = box(s, 1.0, 6.18, 11.4, 0.7)
 para(tf, "▶  Try it now:  https://epiphany-ds.fly.dev", 20, EMERALD, bold=True, first=True)

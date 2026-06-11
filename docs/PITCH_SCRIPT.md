@@ -73,28 +73,29 @@ Say these out loud; they're what separates you from the pack:
 
 ## 6. Live demo walkthrough (90 seconds — the money shot)
 
-Have https://epiphany-ds.fly.dev/ open and signed in beforehand.
+Have https://epiphany-ds.fly.dev/ open and signed in. Have 1–2 CSVs ready (ideally
+of different shapes — e.g. one with a category target, one with a numeric target).
 
 1. **Landing → sign in.** "Real auth via Clerk — anyone can sign up." (5s)
-2. **Dashboard.** Point at the **Active Agent Stream** typing live:
-   "This is the agent working *right now*, on its own — trigger, explore, reason,
-   validate, deploy." (15s)
-3. **Hero metrics + Interventions table.** "Every row is a real hypothesis it
+2. **Empty workspace.** "Notice — it starts empty. No canned data. It's *your*
+   data scientist; you bring the data." (8s)
+3. **Upload a dataset.** Click **Upload data**, drop in your first CSV. "It
+   auto-detects the columns and the target and starts working immediately — the
+   **Active Agent Stream** is the agent running its loop live." (20s)
+4. **The proof it's real — upload a different dataset.** Drop in a second CSV
+   with a different target type. "Watch — it re-profiles and now chooses a
+   **different statistical test** (t-test → ANOVA → correlation) and a matching
+   model. Same agent, totally different data, zero config." (20s)
+5. **Run a mission.** Type a question into Mission Control in plain English →
+   **Deploy Agent**. "Now Gemini + the Google ADK take over and dynamically
+   choose which tools to call." Show the stream + the generated model code
+   (syntax-highlighted) + the trained-model metrics. (22s)
+6. **Hero metrics + Interventions table.** "Every row is a real hypothesis it
    tested, with a real p-value. Green = statistically significant." (10s)
-4. **The proof it's real — switch datasets.** Open the dataset card, switch from
-   churn to **wine_cultivars**. "Watch — it re-profiles, picks `wine_class`, and
-   now chooses **ANOVA** instead of a t-test, and trains a 94%-accuracy
-   classifier. Same agent, totally different domain, zero config." (20s)
-5. **Run a mission.** Type into Mission Control: *"What most strongly drives
-   wine_class?"* → Deploy Agent. "Now Gemini takes over and dynamically chooses
-   which tools to call." Show the stream + the generated model code (syntax
-   highlighted) + the trained-model metrics. (25s)
-6. **Upload your own data.** Drag in any CSV. "It works on *your* data too —
-   that's the whole point. An AI data scientist for anyone." (15s)
 
 **Closing line:**
 > "Epiphany turns a dataset into a validated, deployed model without a human in
-> the loop — and it just did it live, on three different domains, in 90 seconds.
+> the loop — and it just did it live, on data it had never seen, in 90 seconds.
 > That's not a demo of data science. That *is* data science, automated."
 
 ---

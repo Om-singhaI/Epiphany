@@ -43,10 +43,11 @@ class Settings(BaseSettings):
     # Path to the local SQLite database that records every agent cycle.
     database_path: str = Field(default="epiphany.db")
 
-    # ── Local data + outputs (the "anyone can use" path) ─────────────────
-    # When Elastic is not configured, the agent analyses this real dataset.
-    # Point it at any CSV (or .parquet) to do data science on your own data.
-    data_csv_path: str = Field(default="data/train.csv")
+    # ── Local data + outputs (bring-your-own-data) ──────────────────────
+    # No dataset ships by default: a new user starts with an empty workspace
+    # and must upload their own CSV/Parquet (or connect Elastic) before the
+    # agent runs. Set this (or upload in the UI) to point at a file.
+    data_csv_path: str = Field(default="")
     # When True, the agent analyses ``data_csv_path`` even if Elastic is
     # connected. Set automatically when a user uploads/selects a local dataset
     # so "bring your own data" always wins over the configured index.
